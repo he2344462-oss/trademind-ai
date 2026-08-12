@@ -1,11 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { BrowserManager } from '../browser/manager.js';
-import { getHttpPort } from '../config/env.js';
-import { listRegisteredSources, listProviderPublicMetas } from '../providers/registry.js';
+import { getHttpHost, getHttpPort, getInternalToken, getMaxBodyBytes } from '../config/env.js';
+import { listProviderPublicMetas } from '../providers/registry.js';
 import { runCustomRuleTest } from '../providers/sourceCustom/index.js';
 import { analyzeCustomPage } from '../providers/sourceCustom/analyze-page.js';
 import type { CustomCollectOptions } from '../providers/sourceCustom/types.js';
 import { runCollectTask } from '../tasks/collect-task.js';
+import { COLLECTOR_TOKEN_HEADER, hasValidCollectorToken } from './internal-auth.js';
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const buf = Buffer.from(JSON.stringify(body), 'utf8');
@@ -28,12 +29,16 @@ function matchBrowserProfileRoute(
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const raw = await new Promise<string>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (c) => chunks.push(Buffer.from(c)));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  const maxBytes = getMaxBodyBytes();
+  for await (const chunk of req) {
+    const buffer = Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > maxBytes) throw new Error('body_too_large');
+    chunks.push(buffer);
+  }
+  const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw.trim()) return {};
   try {
     return JSON.parse(raw) as unknown;
@@ -47,13 +52,21 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
  * body: { "source": "1688", "url": "https://..." }
  */
 export function createCollectorServer(browser: BrowserManager) {
+  const internalToken = getInternalToken();
   return createServer(async (req, res) => {
     try {
       if (req.method === 'GET' && req.url === '/health') {
         json(res, 200, {
           ok: true,
           service: 'trademind-collector',
-          sources: listRegisteredSources(),
+        });
+        return;
+      }
+
+      if (!hasValidCollectorToken(req.headers[COLLECTOR_TOKEN_HEADER], internalToken)) {
+        json(res, 401, {
+          ok: false,
+          error: { code: 'UNAUTHORIZED', message: 'collector authentication required' },
         });
         return;
       }
@@ -326,9 +339,10 @@ export function createCollectorServer(browser: BrowserManager) {
 export function listenCollectorHttp(browser: BrowserManager): ReturnType<typeof createServer> {
   const server = createCollectorServer(browser);
   const port = getHttpPort();
-  server.listen(port, () => {
+  const host = getHttpHost();
+  server.listen(port, host, () => {
     console.info(
-      `[collector] listening on :${port} (POST /v1/collect, GET /v1/providers/1688|pinduoduo/auth-status, POST .../open-login-browser, GET /health)`,
+      `[collector] listening on ${host}:${port} (authenticated /v1 API, GET /health)`,
     );
   });
   return server;

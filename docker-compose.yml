@@ -7,15 +7,15 @@ services:
     container_name: trademind-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: trademind
-      POSTGRES_PASSWORD: trademind
-      POSTGRES_DB: trademind
+      POSTGRES_USER: ${DB_USER:-trademind}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me-local-database}
+      POSTGRES_DB: ${DB_NAME:-trademind}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - trademind_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trademind -d trademind"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -26,7 +26,7 @@ services:
     container_name: trademind-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

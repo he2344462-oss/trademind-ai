@@ -53,6 +53,22 @@ func TestValidate_developmentAllowsDefaults(t *testing.T) {
 	}
 }
 
+func TestValidate_collectorRequiresStrongInternalToken(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		AppEnv:           EnvDevelopment,
+		CollectorBaseURL: "http://127.0.0.1:3100",
+		DB:               DBConfig{Driver: "postgres", User: "u", Name: "db"},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "COLLECTOR_INTERNAL_TOKEN") {
+		t.Fatalf("expected missing collector token rejection, got %v", err)
+	}
+	cfg.CollectorInternalToken = strings.Repeat("c", 32)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid collector token rejected: %v", err)
+	}
+}
+
 func productionP4Auth() AuthConfig {
 	return AuthConfig{
 		SessionMode:           AuthSessionModeSecure,
@@ -260,6 +276,7 @@ func TestLoad_productionFromEnv(t *testing.T) {
 	t.Setenv("BACKUP_RETENTION_MONTHLY", "12")
 	t.Setenv("RELEASE_REQUIRE_PRE_BACKUP", "true")
 	t.Setenv("PAGINATION_CURSOR_SIGNING_KEY", strings.Repeat("c", 48))
+	t.Setenv("COLLECTOR_INTERNAL_TOKEN", strings.Repeat("c", 32))
 
 	cfg, err := Load()
 	if err != nil {

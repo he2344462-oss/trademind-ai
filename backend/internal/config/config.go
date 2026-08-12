@@ -41,6 +41,8 @@ type Config struct {
 
 	// CollectorBaseURL is the Node collector HTTP base (e.g. http://127.0.0.1:3100).
 	CollectorBaseURL string
+	// CollectorInternalToken authenticates backend requests to the private Collector API.
+	CollectorInternalToken string
 	// CollectorTimeoutSeconds caps outbound HTTP calls to the collector (default 60).
 	CollectorTimeoutSeconds int
 
@@ -234,6 +236,7 @@ func Load() (*Config, error) {
 		UploadMaxMB: atoiOrDefault(os.Getenv("UPLOAD_MAX_MB"), 10),
 
 		CollectorBaseURL:        strings.TrimRight(strings.TrimSpace(firstNonEmpty(os.Getenv("COLLECTOR_BASE_URL"), "http://127.0.0.1:3100")), "/"),
+		CollectorInternalToken:  strings.TrimSpace(os.Getenv("COLLECTOR_INTERNAL_TOKEN")),
 		CollectorTimeoutSeconds: atoiOrDefault(os.Getenv("COLLECTOR_TIMEOUT_SECONDS"), 120),
 
 		CollectQueueEnabled:      envBool(os.Getenv("COLLECT_QUEUE_ENABLED"), true),

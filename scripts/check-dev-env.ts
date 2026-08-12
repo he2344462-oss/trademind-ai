@@ -90,23 +90,46 @@ export async function runDevEnvChecks(
     banner('TradeMind Dev — 环境检查');
   }
 
-  checkOk(`Node OK (${process.version})`);
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  if (nodeMajor !== 24) {
+    fail(`Node.js version mismatch (${process.version}); install Node.js 24 LTS.`);
+  } else {
+    checkOk(`Node OK (${process.version})`);
+  }
 
   const pnpmV = await commandPrintableVersion('pnpm', ['--version']);
   if (!pnpmV) {
     fail('未检测到 pnpm。请先安装 Node.js，再执行：`npm install -g pnpm@9`，然后重新打开终端。');
   } else {
-    checkOk(`pnpm OK (${pnpmV})`);
+    const pnpmMajor = Number(pnpmV.split('.')[0]);
+    if (pnpmMajor !== 9) {
+      fail(`pnpm version mismatch (${pnpmV}); run Corepack with the repository-pinned pnpm@9.15.4.`);
+    } else {
+      checkOk(`pnpm OK (${pnpmV})`);
+    }
   }
 
   const goV = await commandPrintableVersion('go', ['version']);
   if (!goV) {
     fail('未检测到 Go。请从 https://go.dev/dl/ 安装，并确保 `go version` 在终端可用。');
   } else {
-    checkOk(`Go OK (${goV})`);
+    const goVersion = goV.match(/go(\d+)\.(\d+)/);
+    if (!goVersion || Number(goVersion[1]) !== 1 || Number(goVersion[2]) !== 25) {
+      fail(`Go version mismatch (${goV}); install Go 1.25.x.`);
+    } else {
+      checkOk(`Go OK (${goV})`);
+    }
   }
 
   const effective = resolveEffectiveEnvPath(repoRoot);
+  if (effective) {
+    const collectorToken = readEnvKey(effective, 'COLLECTOR_INTERNAL_TOKEN')?.trim() ?? '';
+    if (collectorToken.length < 32) {
+      fail('COLLECTOR_INTERNAL_TOKEN is missing or shorter than 32 characters; update the effective .env file.');
+    } else {
+      checkOk('Collector internal authentication token is configured');
+    }
+  }
   const infra = await resolveInfra(effective);
 
   if (!(await isDockerCliAvailable()) && !infra.dockerAvailable) {

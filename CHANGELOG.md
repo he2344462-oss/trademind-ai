@@ -4,6 +4,13 @@ All notable changes to TradeMind are documented here.
 
 ## Unreleased
 
+### Runtime baseline and Collector security (2026-08-12)
+
+- Aligned local documentation, CI, and Docker builds on Node.js 24 LTS, pnpm 9.15.4, and Go 1.25.x.
+- Unified Compose PostgreSQL bootstrap credentials with backend `DB_*` settings and limited infrastructure/Collector host port publishing to loopback.
+- Added fail-closed Backend-to-Collector token authentication, loopback-by-default native binding, and bounded Collector request bodies.
+- Added Collector and backend regression coverage for the internal authentication contract.
+
 ### Admin theme (2026-08-09)
 
 - Added an icon-only, tooltip-labelled top-navigation light/dark theme switch with light mode as the default and local preference persistence.

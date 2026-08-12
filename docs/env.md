@@ -98,9 +98,7 @@ docker compose -f docker-compose.full.yml up -d --build
 | `DB_CONN_MAX_IDLE_TIME_SECONDS` | `900` | backend | 否 | P7 空闲连接最长保留时间。 |
 | `DB_QUERY_TIMEOUT_MS` | `5000` | backend | 否 | P7 查询超时预算；逐步接入仓储查询。 |
 | `DB_TRANSACTION_TIMEOUT_MS` | `10000` | backend | 否 | P7 事务超时预算；必须大于等于查询超时。 |
-| `POSTGRES_DB` | `trademind` | docker postgres | 否 | Docker Postgres 初始化库名。 |
-| `POSTGRES_USER` | `trademind` | docker postgres | 否 | Docker Postgres 用户。 |
-| `POSTGRES_PASSWORD` | 示例密码 | docker postgres | 是 | Docker Postgres 密码。 |
+| `DB_PASSWORD` | 本地占位值 | backend / docker postgres | 是 | 后端与 Compose PostgreSQL 共用密码，部署时必须由 Secret 覆盖。 |
 
 ## Redis
 
@@ -115,8 +113,11 @@ docker compose -f docker-compose.full.yml up -d --build
 | 变量 | 示例 / 默认 | 服务 | 敏感 | 说明 |
 | --- | --- | --- | --- | --- |
 | `COLLECTOR_BASE_URL` | `http://127.0.0.1:3100` | backend | 否 | Go API 调用 Collector 的基础地址。 |
+| `COLLECTOR_INTERNAL_TOKEN` | 本地占位值 | backend / collector | 是 | Backend→Collector 内部鉴权 Token，至少 32 字符，不得下发 Admin 或写入日志。 |
 | `COLLECTOR_TIMEOUT_SECONDS` | `120` | backend | 否 | 后端调用 Collector 超时；淘宝/天猫任务会按页面打开超时自动放宽（约 `gotoTimeoutMs + 90s`）。 |
 | `COLLECTOR_HTTP_ADDR` | `:3100` / `:3001` | collector | 否 | Collector 监听地址。 |
+| `COLLECTOR_HTTP_HOST` | `127.0.0.1` | collector | 否 | 原生运行默认仅监听回环；Compose 内为服务网络监听 `0.0.0.0`，宿主端口仍只绑定回环。 |
+| `COLLECTOR_MAX_BODY_BYTES` | `1048576` | collector | 否 | Collector 接受的 JSON 请求体上限。 |
 | `COLLECTOR_MAIN_SERVICE_URL` | `http://127.0.0.1:8080` | collector | 否 | Collector 回调或访问后端的基础地址预留。 |
 | `COLLECTOR_GOTO_TIMEOUT_MS` | `45000` | collector | 否 | Playwright 页面打开超时。 |
 | `COLLECTOR_HEADLESS` | `1` | collector | 否 | 是否无头浏览器运行；本地打开登录浏览器时可设为 `0`。 |

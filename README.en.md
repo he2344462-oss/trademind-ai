@@ -124,6 +124,8 @@ The screenshots below come from the local development environment and show the m
 
 ## Quick Start
 
+Local baseline: Node.js 24 LTS, pnpm 9.15.4, Go 1.25.x, and Docker Desktop with Docker Compose.
+
 ### Local Development
 
 ```bash
@@ -131,6 +133,8 @@ pnpm install
 pnpm install:collector:browsers
 pnpm dev
 ```
+
+Collector listens on loopback by default, and `/v1/*` accepts only requests carrying the backend's internal token. The `.env.example` placeholder supports local development only; replace `COLLECTOR_INTERNAL_TOKEN` in every deployed environment.
 
 Useful commands:
 

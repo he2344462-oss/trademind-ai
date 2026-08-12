@@ -1,6 +1,8 @@
 # TradeMind 当前维护状态
 
-更新时间：2026-08-09
+更新时间：2026-08-12
+
+2026-08-12 完成运行基线与 Collector 安全加固：统一 Node.js 24 LTS、pnpm 9.15.4、Go 1.25.x 的文档、CI 与 Docker 约定；Compose PostgreSQL 与后端复用同一组 `DB_*` 凭据；本地基础设施和 Collector 发布端口仅绑定回环地址；Backend→Collector `/v1/*` 使用至少 32 字符的内部 Token 鉴权，并限制 Collector JSON 请求体大小。未开始 Tenant、计费、套餐或商品模型重构。
 
 ## 生命周期
 

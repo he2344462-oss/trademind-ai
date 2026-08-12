@@ -15,22 +15,41 @@ import (
 
 // CollectorClient calls the Node collector HTTP API with strict timeouts.
 type CollectorClient struct {
-	BaseURL string
-	Client  *http.Client
+	BaseURL       string
+	InternalToken string
+	Client        *http.Client
 }
 
 // NewCollectorClient builds an HTTP client using baseURL (no trailing slash) and timeout.
-func NewCollectorClient(baseURL string, timeout time.Duration) *CollectorClient {
+func NewCollectorClient(baseURL string, timeout time.Duration, internalToken ...string) *CollectorClient {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	token := ""
+	if len(internalToken) > 0 {
+		token = strings.TrimSpace(internalToken[0])
+	}
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
 	return &CollectorClient{
-		BaseURL: baseURL,
+		BaseURL:       baseURL,
+		InternalToken: token,
 		Client: &http.Client{
 			Timeout: timeout,
 		},
 	}
+}
+
+const collectorInternalTokenHeader = "X-TradeMind-Collector-Token"
+
+func (c *CollectorClient) newRequest(ctx context.Context, method, target string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, target, body)
+	if err != nil {
+		return nil, err
+	}
+	if token := strings.TrimSpace(c.InternalToken); token != "" {
+		req.Header.Set(collectorInternalTokenHeader, token)
+	}
+	return req, nil
 }
 
 // CollectorRejectedError is returned when collector responds with ok=false (e.g. HTTP 422).
@@ -107,7 +126,7 @@ func (c *CollectorClient) AnalyzePage(ctx context.Context, rawURL string, option
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/custom/analyze-page", bytes.NewReader(payload))
+	req, err := c.newRequest(ctx, http.MethodPost, c.BaseURL+"/v1/custom/analyze-page", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +177,7 @@ func (c *CollectorClient) CustomRuleTest(ctx context.Context, rawURL string, opt
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/collect/custom-rule-test", bytes.NewReader(payload))
+	req, err := c.newRequest(ctx, http.MethodPost, c.BaseURL+"/v1/collect/custom-rule-test", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +242,7 @@ func (c *CollectorClient) OpenBrowserProfileLogin(ctx context.Context, profileKe
 	}
 	body, _ := json.Marshal(map[string]string{"url": rawURL})
 	path := fmt.Sprintf("%s/v1/browser-profiles/%s/open-login", c.BaseURL, url.PathEscape(profileKey))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, bytes.NewReader(body))
+	req, err := c.newRequest(ctx, http.MethodPost, path, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -270,7 +289,7 @@ func (c *CollectorClient) CheckBrowserProfileAccess(ctx context.Context, profile
 	rawURL = strings.TrimSpace(rawURL)
 	body, _ := json.Marshal(map[string]string{"url": rawURL})
 	path := fmt.Sprintf("%s/v1/browser-profiles/%s/check", c.BaseURL, url.PathEscape(profileKey))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, bytes.NewReader(body))
+	req, err := c.newRequest(ctx, http.MethodPost, path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +351,7 @@ func (c *CollectorClient) CollectWithTimeout(ctx context.Context, source, rawURL
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/collect", bytes.NewReader(payload))
+	req, err := c.newRequest(ctx, http.MethodPost, c.BaseURL+"/v1/collect", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +433,7 @@ func (c *CollectorClient) FetchProviders(parent context.Context) ([]CollectProvi
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/v1/providers", nil)
+	req, err := c.newRequest(ctx, http.MethodGet, c.BaseURL+"/v1/providers", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +474,7 @@ func (c *CollectorClient) ProbeHealth(parent context.Context) (reachable bool, m
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/health", nil)
+	req, err := c.newRequest(ctx, http.MethodGet, c.BaseURL+"/health", nil)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -485,7 +504,7 @@ func (c *CollectorClient) decodeDataEnvelope(parent context.Context, method, pat
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, nil)
+	req, err := c.newRequest(ctx, method, c.BaseURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -546,7 +565,7 @@ func (c *CollectorClient) decodeDataEnvelopeWithBody(
 	if len(body) > 0 {
 		bodyReader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, bodyReader)
+	req, err := c.newRequest(ctx, method, c.BaseURL+path, bodyReader)
 	if err != nil {
 		return nil, err
 	}

@@ -46,6 +46,9 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.DB.User) == "" || strings.TrimSpace(c.DB.Name) == "" {
 		return fmt.Errorf("%s: DB_USER and DB_NAME are required", ErrCodeConfigRequired)
 	}
+	if strings.TrimSpace(c.CollectorBaseURL) != "" && len(strings.TrimSpace(c.CollectorInternalToken)) < 32 {
+		return fmt.Errorf("%s: COLLECTOR_INTERNAL_TOKEN must be at least 32 characters when COLLECTOR_BASE_URL is configured", ErrCodeConfigRequired)
+	}
 
 	if err := c.validateStorageProvider(); err != nil {
 		return err

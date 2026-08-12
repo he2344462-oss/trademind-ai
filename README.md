@@ -124,6 +124,8 @@ TradeMind 是一个面向跨境卖家与开发团队的开源 AI 运营平台，
 
 ## 快速开始
 
+本地基线：Node.js 24 LTS、pnpm 9.15.4、Go 1.25.x、Docker Desktop（含 Docker Compose）。
+
 ### 本地开发
 
 ```bash
@@ -131,6 +133,8 @@ pnpm install
 pnpm install:collector:browsers
 pnpm dev
 ```
+
+Collector 默认仅监听本机回环地址，且 `/v1/*` 只接受后端携带内部 Token 的请求。首次复制 `.env.example` 后可直接用于本地联调；任何部署环境都必须替换 `COLLECTOR_INTERNAL_TOKEN` 占位值。
 
 常用命令：
 

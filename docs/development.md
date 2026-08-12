@@ -4,9 +4,9 @@ TradeMind 由 Go backend、React Admin、Node collector、PostgreSQL 与 Redis �
 
 ## 环境要求
 
-- Node.js 20+
-- pnpm 9.15+
-- Go 1.25+
+- Node.js 24 LTS
+- pnpm 9.15.x（仓库锁定 `pnpm@9.15.4`）
+- Go 1.25.x
 - Docker / Docker Compose，或与 `.env` 匹配的本机 PostgreSQL 和 Redis
 
 ## 安装与启动
@@ -18,6 +18,8 @@ pnpm dev
 ```
 
 `pnpm dev` 启动 PostgreSQL/Redis、backend、Admin 和 collector。若 Docker 不可用，会检查 `.env` 指定的本机 PostgreSQL/Redis。
+
+本地 Collector 默认只监听 `127.0.0.1`，所有 `/v1/*` 请求必须携带由后端注入的内部 Token；`/health` 保持无鉴权以供进程健康检查。复制新版 `.env.example` 时已包含仅供本地开发的占位 Token，部署前必须替换。
 
 常用命令：
 

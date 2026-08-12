@@ -11,6 +11,26 @@ export function getHttpPort(): number {
   return Number.isFinite(n) && n > 0 ? n : 3100;
 }
 
+export function getHttpHost(): string {
+  return process.env.COLLECTOR_HTTP_HOST?.trim() || '127.0.0.1';
+}
+
+export function getInternalToken(): string {
+  const token = process.env.COLLECTOR_INTERNAL_TOKEN?.trim() ?? '';
+  if (!token) {
+    throw new Error('COLLECTOR_INTERNAL_TOKEN is required');
+  }
+  if (token.length < 32) {
+    throw new Error('COLLECTOR_INTERNAL_TOKEN must be at least 32 characters');
+  }
+  return token;
+}
+
+export function getMaxBodyBytes(): number {
+  const n = Number(process.env.COLLECTOR_MAX_BODY_BYTES ?? '1048576');
+  return Number.isSafeInteger(n) && n > 0 ? n : 1048576;
+}
+
 export function getDefaultNavigationTimeoutMs(): number {
   const n = Number(process.env.COLLECTOR_GOTO_TIMEOUT_MS ?? '45000');
   return Number.isFinite(n) && n > 0 ? n : 45000;

@@ -14,6 +14,8 @@
 
 ## 快速启动
 
+Compose 仅将 PostgreSQL、Redis 与 Collector 端口发布到宿主机回环地址；容器间仍通过私有 Compose 网络通信。Collector 的 `/v1/*` 接口由 `COLLECTOR_INTERNAL_TOKEN` 保护，只有 `/health` 保持无鉴权用于健康检查。
+
 ```bash
 cp .env.example .env
 docker compose -f docker-compose.full.yml up -d --build
@@ -59,8 +61,8 @@ P7 性能数据集与负载测试只能在隔离 `APP_ENV=performance` 环境执
 - `JWT_SECRET`
 - `APP_MASTER_KEY`
 - `ADMIN_BOOTSTRAP_PASSWORD`
-- `POSTGRES_PASSWORD`
 - `DB_PASSWORD`
+- `COLLECTOR_INTERNAL_TOKEN`（至少 32 字符，backend 与 collector 必须一致）
 - 所有第三方平台、AI、存储、Webhook、邮箱等密钥
 
 不要把真实密钥提交到仓库，也不要写入镜像。

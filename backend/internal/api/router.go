@@ -235,10 +235,14 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 		collectorTimeout = time.Duration(dep.Config.CollectorTimeoutSeconds) * time.Second
 	}
 	collectorBase := "http://127.0.0.1:3100"
-	if dep.Config != nil && dep.Config.CollectorBaseURL != "" {
-		collectorBase = dep.Config.CollectorBaseURL
+	collectorToken := ""
+	if dep.Config != nil {
+		collectorToken = dep.Config.CollectorInternalToken
+		if dep.Config.CollectorBaseURL != "" {
+			collectorBase = dep.Config.CollectorBaseURL
+		}
 	}
-	collectorClient := collect.NewCollectorClient(collectorBase, collectorTimeout)
+	collectorClient := collect.NewCollectorClient(collectorBase, collectorTimeout, collectorToken)
 
 	profileSvc := &collectbrowserprofile.Service{
 		DB:        dep.DB,
