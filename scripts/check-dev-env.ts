@@ -4,7 +4,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { commandPrintableVersion, runCapture } from './utils/command.js';
-import { resolveEffectiveEnvPath } from './utils/env-file.js';
+import { readEnvKey, resolveEffectiveEnvPath } from './utils/env-file.js';
 import {
   formatHostPort,
   infraUsable,
