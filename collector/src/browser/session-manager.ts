@@ -35,7 +35,10 @@ import {
   getTaobaoTmallUserDataDir,
 } from './browser-paths.js';
 import { PAGE_EVALUATE_POLYFILL } from './evaluate-in-page.js';
-import { getBrowserHeadless, getDefaultNavigationTimeoutMs } from '../config/env.js';
+import { getBrowserExecutablePath, getBrowserHeadless, getDefaultNavigationTimeoutMs } from '../config/env.js';
+import { installContextOutboundPolicy } from '../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../security/provider-policies.js';
+import { secureGoto } from '../security/outbound-policy.js';
 
 const PROVIDER_1688 = '1688';
 const PROVIDER_PINDUODUO = 'pinduoduo';
@@ -74,6 +77,7 @@ function persistentContextOptions(headless: boolean, provider: string = PROVIDER
   if (provider === PROVIDER_PINDUODUO) {
     return {
       headless,
+      executablePath: getBrowserExecutablePath(),
       locale: 'zh-CN' as const,
       userAgent: defaultUserAgent(),
       args: [
@@ -85,6 +89,7 @@ function persistentContextOptions(headless: boolean, provider: string = PROVIDER
   }
   return {
     headless,
+    executablePath: getBrowserExecutablePath(),
     locale: 'zh-CN' as const,
     userAgent: defaultUserAgent(),
     args: ['--disable-blink-features=AutomationControlled'],
@@ -160,6 +165,7 @@ export class BrowserSessionManager {
       userDataDir,
       persistentContextOptions(wantHeadless, provider),
     );
+    await installContextOutboundPolicy(context, outboundPolicyForProvider(provider));
     await context.addInitScript(PAGE_EVALUATE_POLYFILL);
     context.setDefaultNavigationTimeout(getDefaultNavigationTimeoutMs());
     context.setDefaultTimeout(getDefaultNavigationTimeoutMs());
@@ -225,7 +231,7 @@ export class BrowserSessionManager {
       this.loginSessionActive.add(provider);
       const context = await this.getOrCreateProviderContext(provider, { headless: false });
       const page = context.pages()[0] ?? (await context.newPage());
-      await page.goto(loginUrl, {
+      await secureGoto(page, loginUrl, outboundPolicyForProvider(provider), {
         waitUntil: 'domcontentloaded',
         timeout: getDefaultNavigationTimeoutMs(),
       });
@@ -254,7 +260,7 @@ export class BrowserSessionManager {
         const page = existing.pages()[0] ?? (await existing.newPage());
         await page.bringToFront().catch(() => undefined);
         if (page.url() === 'about:blank' || !page.url().startsWith('http')) {
-          await page.goto(url, {
+          await secureGoto(page, url, outboundPolicyForProvider(PROVIDER_PINDUODUO), {
             waitUntil: 'domcontentloaded',
             timeout: getDefaultNavigationTimeoutMs(),
           });
@@ -270,7 +276,7 @@ export class BrowserSessionManager {
       this.loginSessionActive.add(PROVIDER_PINDUODUO);
       const context = await this.getOrCreateProviderContext(PROVIDER_PINDUODUO, { headless: false });
       const page = context.pages()[0] ?? (await context.newPage());
-      await page.goto(url, {
+      await secureGoto(page, url, outboundPolicyForProvider(PROVIDER_PINDUODUO), {
         waitUntil: 'domcontentloaded',
         timeout: getDefaultNavigationTimeoutMs(),
       });
@@ -301,7 +307,7 @@ export class BrowserSessionManager {
         page.setDefaultTimeout(timeoutMs);
 
         try {
-          await page.goto(checkUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+          await secureGoto(page, checkUrl, outboundPolicyForProvider(PROVIDER_1688), { waitUntil: 'domcontentloaded', timeout: timeoutMs });
           await page
             .waitForLoadState('networkidle', { timeout: Math.min(timeoutMs, 12_000) })
             .catch(() => undefined);
@@ -393,7 +399,7 @@ export class BrowserSessionManager {
       page.setDefaultTimeout(timeoutMs);
 
       try {
-        await page.goto(checkUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+        await secureGoto(page, checkUrl, outboundPolicyForProvider(PROVIDER_PINDUODUO), { waitUntil: 'domcontentloaded', timeout: timeoutMs });
         await page
           .waitForLoadState('networkidle', { timeout: Math.min(timeoutMs, 12_000) })
           .catch(() => undefined);
@@ -500,7 +506,7 @@ export class BrowserSessionManager {
         const page = existing.pages()[0] ?? (await existing.newPage());
         await page.bringToFront().catch(() => undefined);
         if (contextUrl?.trim()) {
-          await page.goto(loginUrl, {
+          await secureGoto(page, loginUrl, outboundPolicyForProvider(PROVIDER_TAOBAO_TMALL), {
             waitUntil: 'domcontentloaded',
             timeout: getDefaultNavigationTimeoutMs(),
           });
@@ -515,7 +521,7 @@ export class BrowserSessionManager {
       this.loginSessionActive.add(PROVIDER_TAOBAO_TMALL);
       const context = await this.getOrCreateProviderContext(PROVIDER_TAOBAO_TMALL, { headless: false });
       const page = context.pages()[0] ?? (await context.newPage());
-      await page.goto(loginUrl, {
+      await secureGoto(page, loginUrl, outboundPolicyForProvider(PROVIDER_TAOBAO_TMALL), {
         waitUntil: 'domcontentloaded',
         timeout: getDefaultNavigationTimeoutMs(),
       });
@@ -544,7 +550,7 @@ export class BrowserSessionManager {
       page.setDefaultTimeout(timeoutMs);
 
       try {
-        await page.goto(checkUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+        await secureGoto(page, checkUrl, outboundPolicyForProvider(PROVIDER_TAOBAO_TMALL), { waitUntil: 'domcontentloaded', timeout: timeoutMs });
         await page
           .waitForLoadState('networkidle', { timeout: Math.min(timeoutMs, 12_000) })
           .catch(() => undefined);

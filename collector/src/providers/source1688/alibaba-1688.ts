@@ -10,6 +10,9 @@ import { log1688CollectDebug, save1688FailureSnapshot } from './debug-snapshot.j
 import { assembleParsedProduct, extractBrowserPayload } from './parser.js';
 import { prepare1688OfferPage } from './page-prep.js';
 import type { Parse1688Result } from './types.js';
+import { PROVIDER_ALLOWED_DOMAINS } from '../../security/provider-policies.js';
+import { secureGoto } from '../../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../../security/provider-policies.js';
 
 function is1688Host(hostname: string): boolean {
   return hostname === '1688.com' || hostname.endsWith('.1688.com');
@@ -118,14 +121,14 @@ function throwBlocked(reason: string): never {
 
 async function gotoOfferPage(page: Page, navUrl: string, fallbackUrl: string, timeout: number): Promise<void> {
   try {
-    await page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout });
+    await secureGoto(page, navUrl, outboundPolicyForProvider('1688'), { waitUntil: 'domcontentloaded', timeout });
   } catch (firstErr) {
     if (navUrl === fallbackUrl) {
       const err = firstErr instanceof Error ? firstErr.message : String(firstErr);
       if (/timeout/i.test(err)) throw new Error(`TIMEOUT:navigation_${err}`);
       throw new Error(`NAVIGATION_FAILED:${err}`);
     }
-    await page.goto(fallbackUrl, { waitUntil: 'domcontentloaded', timeout });
+    await secureGoto(page, fallbackUrl, outboundPolicyForProvider('1688'), { waitUntil: 'domcontentloaded', timeout });
   }
 }
 
@@ -187,6 +190,7 @@ async function extractAssembled(page: Page, sourceUrl: string): Promise<Parse168
 
 class Alibaba1688Provider implements CollectorProvider {
   readonly sourceId = '1688';
+  readonly allowedDomains = PROVIDER_ALLOWED_DOMAINS['1688'];
   readonly meta = {
     name: '1688采集器',
     description: '采集 1688 商品详情页，支持标题、主图、详情图、属性、SKU',

@@ -120,6 +120,10 @@ docker compose -f docker-compose.full.yml up -d --build
 | `COLLECTOR_MAX_BODY_BYTES` | `1048576` | collector | 否 | Collector 接受的 JSON 请求体上限。 |
 | `COLLECTOR_MAIN_SERVICE_URL` | `http://127.0.0.1:8080` | collector | 否 | Collector 回调或访问后端的基础地址预留。 |
 | `COLLECTOR_GOTO_TIMEOUT_MS` | `45000` | collector | 否 | Playwright 页面打开超时。 |
+| `COLLECTOR_DNS_TIMEOUT_MS` | `3000` | collector | 否 | 出站 DNS 解析超时（毫秒）；任一解析地址不是公网地址时拒绝访问。 |
+| `COLLECTOR_REDIRECT_LIMIT` | `5` | collector | 否 | 浏览器主导航允许的最大 HTTP Redirect 次数。 |
+| `COLLECTOR_CUSTOM_ALLOWED_DOMAINS` | 空 | collector | 否 | Custom Provider 明确许可的根域名，逗号分隔；为空时 Custom 导航默认拒绝。 |
+| `COLLECTOR_BROWSER_EXECUTABLE_PATH` | 空 | collector | 否 | 可选的本机 Chrome/Edge 可执行文件路径；默认使用 Playwright 管理的 Chromium。 |
 | `COLLECTOR_HEADLESS` | `1` | collector | 否 | 是否无头浏览器运行；本地打开登录浏览器时可设为 `0`。 |
 | `COLLECTOR_BROWSER_PROFILE_DIR` / `BROWSER_PROFILE_ROOT` | `collector/data/browser-profiles`（相对 collector 包根目录） | collector | 否 | 1688 持久化 Profile 根目录（1688 使用子目录 `1688`）。Docker 通常设为 `/workspace/data/browser-profiles`。 |
 | `COLLECTOR_STORAGE_STATE_DIR` | `data/storage-states` | collector | 否 | Playwright storageState 导出目录（预留）。 |

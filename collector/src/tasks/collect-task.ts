@@ -4,6 +4,7 @@ import { getProviderBySource } from '../providers/registry.js';
 import type { NormalizedProduct } from '../types/product.js';
 import type { CustomAccessReport } from '../types/access-status.js';
 import type { CollectTaskErrorCode } from '../types/task.js';
+import { assertOutboundUrl, OutboundSecurityError } from '../security/outbound-policy.js';
 
 export type CollectTaskSuccess = {
   status: 'success';
@@ -96,6 +97,21 @@ export async function runCollectTask(
         message: `url is not supported by source "${provider.sourceId}"`,
       },
     };
+  }
+
+  try {
+    await assertOutboundUrl(url, {
+      provider: provider.sourceId,
+      allowedDomains: provider.allowedDomains,
+    });
+  } catch (error) {
+    if (error instanceof OutboundSecurityError) {
+      return {
+        status: 'failed',
+        error: { code: 'UNSUPPORTED_URL', message: error.message },
+      };
+    }
+    throw error;
   }
 
   try {

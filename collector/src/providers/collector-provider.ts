@@ -19,6 +19,9 @@ export interface CollectorProvider {
   /** 产品元信息（注册表驱动 /v1/providers） */
   readonly meta: CollectProviderMeta;
 
+  /** Registrable domains whose hosts this provider may navigate to. */
+  readonly allowedDomains: readonly string[];
+
   /** 是否接受该 URL（用于快速校验，不必打开浏览器） */
   canHandle(url: string): boolean;
 

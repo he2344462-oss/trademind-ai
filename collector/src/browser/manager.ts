@@ -2,7 +2,9 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { CustomProfileSessionManager } from './profile-sessions.js';
 import { BrowserSessionManager } from './session-manager.js';
 import { PAGE_EVALUATE_POLYFILL } from './evaluate-in-page.js';
-import { getBrowserHeadless, getDefaultNavigationTimeoutMs } from '../config/env.js';
+import { getBrowserExecutablePath, getBrowserHeadless, getDefaultNavigationTimeoutMs } from '../config/env.js';
+import { installContextOutboundPolicy } from '../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../security/provider-policies.js';
 
 /**
  * 统一管理 Chromium 实例，避免各 Provider 自行 newBrowser 导致泄漏。
@@ -22,6 +24,7 @@ export class BrowserManager {
     if (this.browser) return this.browser;
     this.browser = await chromium.launch({
       headless: getBrowserHeadless(),
+      executablePath: getBrowserExecutablePath(),
       args: ['--disable-blink-features=AutomationControlled'],
     });
     return this.browser;
@@ -43,7 +46,7 @@ export class BrowserManager {
     return this.customProfiles.withProfilePage(profileKey, fn);
   }
 
-  async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+  async withPage<T>(provider: string, fn: (page: Page) => Promise<T>): Promise<T> {
     const browser = await this.ensureBrowser();
     const context = await browser.newContext({
       userAgent:
@@ -51,6 +54,7 @@ export class BrowserManager {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       locale: 'zh-CN',
     });
+    await installContextOutboundPolicy(context, outboundPolicyForProvider(provider));
     await context.addInitScript(PAGE_EVALUATE_POLYFILL);
     const page = await context.newPage();
     page.setDefaultNavigationTimeout(getDefaultNavigationTimeoutMs());

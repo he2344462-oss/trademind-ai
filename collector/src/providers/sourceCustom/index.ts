@@ -6,6 +6,8 @@ import type { CollectFeature } from '../../types/provider-meta.js';
 import type { CustomCollectOptions } from './types.js';
 import { normalizeCustomRuleDecl } from './normalize-rule.js';
 import { runCustomCollect } from './run-custom.js';
+import { getCustomAllowedDomains } from '../../config/env.js';
+import { domainAllowed } from '../../security/outbound-policy.js';
 
 function isHttpUrl(url: string): boolean {
   try {
@@ -33,6 +35,9 @@ function domainMatches(host: string, domain: string): boolean {
 
 export const sourceCustomCollectorProvider: CollectorProvider = {
   sourceId: 'custom',
+  get allowedDomains() {
+    return getCustomAllowedDomains();
+  },
   meta: {
     name: '自定义链接采集器',
     description:
@@ -66,6 +71,9 @@ export const sourceCustomCollectorProvider: CollectorProvider = {
       throw new Error('INVALID_REQUEST:missing domain in options');
     }
     const host = hostnameOf(urlStr);
+    if (!domainAllowed(host, getCustomAllowedDomains())) {
+      throw new Error('UNSUPPORTED_URL:custom domain is not enabled by collector configuration');
+    }
     if (!domainMatches(host, domain)) {
       throw new Error('INVALID_URL:hostname does not match rule domain');
     }

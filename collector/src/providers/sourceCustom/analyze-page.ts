@@ -1,4 +1,6 @@
 import type { Page } from 'playwright';
+import { secureGoto } from '../../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../../security/provider-policies.js';
 import type { BrowserManager } from '../../browser/manager.js';
 import { evaluateInPage } from '../../browser/evaluate-in-page.js';
 import { getDefaultNavigationTimeoutMs } from '../../config/env.js';
@@ -15,7 +17,7 @@ async function navigatePage(page: Page, urlStr: string): Promise<{ httpStatus?: 
   const gotoTimeout = getDefaultNavigationTimeoutMs();
   let httpStatus: number | undefined;
   try {
-    const resp = await page.goto(urlStr, {
+    const resp = await secureGoto(page, urlStr, outboundPolicyForProvider('custom'), {
       waitUntil: 'domcontentloaded',
       timeout: gotoTimeout,
     });
@@ -406,5 +408,5 @@ export async function analyzeCustomPage(
   if (useProfile) {
     return browser.withCustomProfilePage(profileKey, run);
   }
-  return browser.withPage(run);
+  return browser.withPage('custom', run);
 }

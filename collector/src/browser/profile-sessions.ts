@@ -4,11 +4,15 @@ import type { AccessStatus } from '../types/access-status.js';
 import { getCustomProfileUserDataDir } from './browser-paths.js';
 import { PAGE_EVALUATE_POLYFILL } from './evaluate-in-page.js';
 import { sanitizeProfileKey } from './profile-key.js';
-import { getBrowserHeadless, getDefaultNavigationTimeoutMs } from '../config/env.js';
+import { getBrowserExecutablePath, getBrowserHeadless, getDefaultNavigationTimeoutMs } from '../config/env.js';
+import { installContextOutboundPolicy } from '../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../security/provider-policies.js';
+import { secureGoto } from '../security/outbound-policy.js';
 
 function persistentContextOptions(headless: boolean) {
   return {
     headless,
+    executablePath: getBrowserExecutablePath(),
     locale: 'zh-CN' as const,
     userAgent:
       process.env.COLLECTOR_USER_AGENT ??
@@ -63,6 +67,7 @@ export class CustomProfileSessionManager {
       userDataDir,
       persistentContextOptions(wantHeadless),
     );
+    await installContextOutboundPolicy(context, outboundPolicyForProvider('custom'));
     await context.addInitScript(PAGE_EVALUATE_POLYFILL);
     const timeout = getDefaultNavigationTimeoutMs();
     context.setDefaultNavigationTimeout(timeout);
@@ -105,7 +110,7 @@ export class CustomProfileSessionManager {
         const page = existing.pages()[0] ?? (await existing.newPage());
         await page.bringToFront().catch(() => undefined);
         if (page.url() === 'about:blank' || !page.url().startsWith('http')) {
-          await page.goto(url, {
+          await secureGoto(page, url, outboundPolicyForProvider('custom'), {
             waitUntil: 'domcontentloaded',
             timeout: getDefaultNavigationTimeoutMs(),
           });
@@ -120,7 +125,7 @@ export class CustomProfileSessionManager {
       this.loginActive.add(key);
       const context = await this.getOrCreateContext(key, { headless: false });
       const page = context.pages()[0] ?? (await context.newPage());
-      await page.goto(url, {
+      await secureGoto(page, url, outboundPolicyForProvider('custom'), {
         waitUntil: 'domcontentloaded',
         timeout: getDefaultNavigationTimeoutMs(),
       });
@@ -142,7 +147,7 @@ export class CustomProfileSessionManager {
     return this.withProfilePage(profileKey, async (page) => {
       let httpStatus: number | undefined;
       try {
-        const resp = await page.goto(url, {
+        const resp = await secureGoto(page, url, outboundPolicyForProvider('custom'), {
           waitUntil: 'domcontentloaded',
           timeout: timeoutMs,
         });

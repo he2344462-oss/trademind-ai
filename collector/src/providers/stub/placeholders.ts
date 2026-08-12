@@ -1,5 +1,6 @@
 import type { BrowserManager } from '../../browser/manager.js';
 import type { CollectInput, CollectorProvider } from '../collector-provider.js';
+import { PROVIDER_ALLOWED_DOMAINS } from '../../security/provider-policies.js';
 
 function isHttpUrl(url: string): boolean {
   try {
@@ -19,6 +20,7 @@ function notImplemented(message: string) {
 /** 拼多多：规划中，仅做链接形态粗校验 */
 export const sourcePddProvider: CollectorProvider = {
   sourceId: 'pdd',
+  allowedDomains: ['yangkeduo.com', 'pinduoduo.com'],
   meta: {
     name: '拼多多采集器',
     description: '采集拼多多商品详情（规划中）。',
@@ -49,6 +51,7 @@ export const sourcePddProvider: CollectorProvider = {
 /** 淘宝 / 天猫 */
 export const sourceTaobaoProvider: CollectorProvider = {
   sourceId: 'taobao',
+  allowedDomains: ['taobao.com', 'tmall.com'],
   meta: {
     name: '淘宝/天猫采集器',
     description: '采集淘宝、天猫商品详情（规划中）。',
@@ -80,6 +83,7 @@ export const sourceTaobaoProvider: CollectorProvider = {
 /** SHEIN / Temu 合并入口 */
 export const sourceSheinTemuProvider: CollectorProvider = {
   sourceId: 'shein_temu',
+  allowedDomains: PROVIDER_ALLOWED_DOMAINS.shein_temu,
   meta: {
     name: 'SHEIN/Temu采集器',
     description: '采集 SHEIN、Temu 等平台商品详情（规划中）。',

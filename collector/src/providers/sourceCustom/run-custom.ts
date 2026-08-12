@@ -17,6 +17,8 @@ import type { NormalizedProduct } from '../../types/product.js';
 import { CustomCollectError, throwCustomError } from './errors.js';
 import { buildQualityScore, SKU_LIMITATION_HINT } from './quality-score.js';
 import type { TitleCandidate } from './title-quality.js';
+import { secureGoto } from '../../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../../security/provider-policies.js';
 
 export type CustomRunMode = 'task' | 'rule_test';
 
@@ -190,7 +192,7 @@ async function navigatePage(page: Page, urlStr: string): Promise<{ httpStatus?: 
   const gotoTimeout = getDefaultNavigationTimeoutMs();
   let httpStatus: number | undefined;
   try {
-    const resp = await page.goto(urlStr, {
+    const resp = await secureGoto(page, urlStr, outboundPolicyForProvider('custom'), {
       waitUntil: 'domcontentloaded',
       timeout: gotoTimeout,
     });
@@ -352,5 +354,5 @@ export async function runCustomCollect(
   if (useProfile) {
     return browser.withCustomProfilePage(profileKey, run);
   }
-  return use1688Session ? browser.with1688Page(run) : browser.withPage(run);
+  return use1688Session ? browser.with1688Page(run) : browser.withPage('custom', run);
 }

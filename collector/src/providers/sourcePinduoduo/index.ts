@@ -4,6 +4,9 @@ import { PINDUODUO_PROFILE_KEY } from './profile.js';
 import type { CollectInput, CollectorProvider } from '../collector-provider.js';
 import type { CollectFeature } from '../../types/provider-meta.js';
 import type { NormalizedProduct } from '../../types/product.js';
+import { PROVIDER_ALLOWED_DOMAINS } from '../../security/provider-policies.js';
+import { secureGoto } from '../../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../../security/provider-policies.js';
 import { getDefaultNavigationTimeoutMs } from '../../config/env.js';
 import { PAGE_EVALUATE_POLYFILL } from '../../browser/evaluate-in-page.js';
 import { detectPinduoduoAccessStatus, throwAccessError } from './access-detect.js';
@@ -54,6 +57,7 @@ function rejectUrlTypeBeforeNav(urlType: PinduoduoUrlType): void {
 
 class PinduoduoCollectorProvider implements CollectorProvider {
   readonly sourceId = 'pinduoduo';
+  readonly allowedDomains = PROVIDER_ALLOWED_DOMAINS.pinduoduo;
   readonly meta = {
     name: '拼多多采集器',
     description: '采集拼多多批发商品详情，支持标题、价格、主图、规格等基础字段。',
@@ -99,7 +103,7 @@ class PinduoduoCollectorProvider implements CollectorProvider {
 
     const run = async (page: Page) => {
       try {
-        await page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: gotoTimeout });
+        await secureGoto(page, navUrl, outboundPolicyForProvider(this.sourceId), { waitUntil: 'domcontentloaded', timeout: gotoTimeout });
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         if (/timeout/i.test(err)) throw new Error(`TIMEOUT:navigation_${err}`);

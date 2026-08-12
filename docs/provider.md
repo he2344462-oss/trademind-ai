@@ -126,6 +126,8 @@ This repository-side implementation is not activated. `currentAllowedLevel=L0`, 
 
 采集服务必须输出统一商品结构，包括标题、图片、属性、SKU、描述图与 raw 原始数据。
 
+所有 Collector Provider 必须声明出站许可域名，并由 `collector/src/security` 的统一策略执行协议、DNS/IP、Redirect 与浏览器请求校验。Provider 不得直接绕过该模块调用 `page.goto`。Custom Provider 的域名许可来自 `COLLECTOR_CUSTOM_ALLOWED_DOMAINS`，未配置时默认拒绝。
+
 ## 扩展建议
 
 新增 Provider 时建议：

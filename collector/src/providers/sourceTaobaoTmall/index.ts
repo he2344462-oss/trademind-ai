@@ -5,6 +5,9 @@ import { PAGE_EVALUATE_POLYFILL } from '../../browser/evaluate-in-page.js';
 import type { CollectInput, CollectorProvider } from '../collector-provider.js';
 import type { CollectFeature } from '../../types/provider-meta.js';
 import type { NormalizedProduct } from '../../types/product.js';
+import { PROVIDER_ALLOWED_DOMAINS } from '../../security/provider-policies.js';
+import { secureGoto } from '../../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../../security/provider-policies.js';
 import { detectTaobaoAccessStatus, throwAccessError } from './access-detect.js';
 import { extractAndAssembleTaobao, validateTaobaoCollectQuality } from './parser.js';
 import { TAOBAO_TMALL_PROFILE_KEY, TAOBAO_TMALL_PROVIDER } from './profile.js';
@@ -57,6 +60,7 @@ function resolveSkuCollectOptions(options?: Record<string, unknown>): TaobaoSkuC
 
 class TaobaoTmallCollectorProvider implements CollectorProvider {
   readonly sourceId = TAOBAO_TMALL_PROVIDER;
+  readonly allowedDomains = PROVIDER_ALLOWED_DOMAINS.taobao_tmall;
   readonly meta = {
     name: '淘宝/天猫采集器',
     description:
@@ -108,7 +112,7 @@ class TaobaoTmallCollectorProvider implements CollectorProvider {
 
     const run = async (page: Page) => {
       try {
-        await page.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: gotoTimeout });
+        await secureGoto(page, sourceUrl, outboundPolicyForProvider(this.sourceId), { waitUntil: 'domcontentloaded', timeout: gotoTimeout });
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         if (/timeout/i.test(err)) throw new Error(`PAGE_LOAD_TIMEOUT:${err}`);

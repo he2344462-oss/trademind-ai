@@ -36,10 +36,33 @@ export function getDefaultNavigationTimeoutMs(): number {
   return Number.isFinite(n) && n > 0 ? n : 45000;
 }
 
+export function getCollectorDnsTimeoutMs(): number {
+  const n = Number(process.env.COLLECTOR_DNS_TIMEOUT_MS ?? '3000');
+  return Number.isFinite(n) && n >= 100 && n <= 30_000 ? n : 3000;
+}
+
+export function getCollectorRedirectLimit(): number {
+  const n = Number(process.env.COLLECTOR_REDIRECT_LIMIT ?? '5');
+  return Number.isSafeInteger(n) && n >= 0 && n <= 20 ? n : 5;
+}
+
+export function getCustomAllowedDomains(): string[] {
+  return [...new Set(
+    String(process.env.COLLECTOR_CUSTOM_ALLOWED_DOMAINS ?? '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase().replace(/^\.+|\.+$/g, ''))
+      .filter(Boolean),
+  )];
+}
+
 export function getBrowserHeadless(): boolean {
   const v = process.env.COLLECTOR_HEADLESS;
   if (v === '0' || v === 'false') return false;
   return true;
+}
+
+export function getBrowserExecutablePath(): string | undefined {
+  return process.env.COLLECTOR_BROWSER_EXECUTABLE_PATH?.trim() || undefined;
 }
 
 /** @deprecated 使用 getBrowserProfileRoot() */

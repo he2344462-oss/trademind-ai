@@ -5,6 +5,9 @@ import type { NormalizedProduct } from '../../types/product.js';
 import type { CollectFeature } from '../../types/provider-meta.js';
 import { getDefaultNavigationTimeoutMs } from '../../config/env.js';
 import { assembleAeProduct, extractBrowserPayload } from './parser.js';
+import { PROVIDER_ALLOWED_DOMAINS } from '../../security/provider-policies.js';
+import { secureGoto } from '../../security/outbound-policy.js';
+import { outboundPolicyForProvider } from '../../security/provider-policies.js';
 
 function isAllowedAliExpressHostname(hostname: string): boolean {
   const h = hostname.toLowerCase();
@@ -30,6 +33,7 @@ export function aeCanHandlePublicURL(urlStr: string): boolean {
 /** 供 Provider 注册的实现 */
 export const aliExpressCollectorProvider: CollectorProvider = new (class AE implements CollectorProvider {
   readonly sourceId = 'aliexpress';
+  readonly allowedDomains = PROVIDER_ALLOWED_DOMAINS.aliexpress;
   readonly meta = {
     name: '速卖通采集器',
     description: '采集 AliExpress 商品详情页，提取标题、图片、属性、SKU 等信息',
@@ -52,10 +56,10 @@ export const aliExpressCollectorProvider: CollectorProvider = new (class AE impl
       throw new Error('INVALID_URL:not_an_aliexpress_item_product_url');
     }
 
-    return browser.withPage(async (page) => {
+    return browser.withPage(this.sourceId, async (page) => {
       const gotoTimeout = getDefaultNavigationTimeoutMs();
       try {
-        await page.goto(input.url, { waitUntil: 'domcontentloaded', timeout: gotoTimeout });
+        await secureGoto(page, input.url, outboundPolicyForProvider(this.sourceId), { waitUntil: 'domcontentloaded', timeout: gotoTimeout });
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         throw new Error(`NAVIGATION_FAILED:${err}`);
