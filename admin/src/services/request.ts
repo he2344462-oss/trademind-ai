@@ -96,3 +96,8 @@ export async function postFormData<T>(path: string, data: FormData): Promise<T> 
   });
   return unwrap(res);
 }
+
+/** Authenticated binary download; keeps the same request interceptors as JSON APIs. */
+export async function getBlob(path: string): Promise<Blob> {
+  return request<Blob>(path, { method: 'GET', responseType: 'blob' });
+}

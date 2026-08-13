@@ -2,6 +2,7 @@ package productflow
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -405,6 +406,268 @@ func (h *Handler) GetListingDraft(c *gin.Context) {
 		return
 	}
 	response.OK(c, out)
+}
+func (h *Handler) GetListingWorkspace(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListingWorkspace(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ListListingContentVersions(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListContentVersions(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) RestoreListingContent(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body RestoreListingContentBody
+	if c.ShouldBindJSON(&body) != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid restore body")
+		return
+	}
+	out, err := h.Svc.RestoreListingContent(c.Request.Context(), tenant, id, actorID(c), body.ContentVersionID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) UpdateListingAssets(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body UpdateListingAssetsBody
+	if c.ShouldBindJSON(&body) != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid asset body")
+		return
+	}
+	out, err := h.Svc.UpdateListingAssets(c.Request.Context(), tenant, id, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) GenerateListingContent(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body GenerateListingContentBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid content request")
+		return
+	}
+	out, err := h.Svc.GenerateListingContent(c.Request.Context(), tenant, id, actorID(c), body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) UpdateListingContent(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body UpdateListingContentBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid content body")
+		return
+	}
+	out, err := h.Svc.UpdateListingContent(c.Request.Context(), tenant, id, actorID(c), body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ReviewListingContent(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body ReviewListingContentBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid review body")
+		return
+	}
+	out, err := h.Svc.ReviewListingContent(c.Request.Context(), tenant, id, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) MarkListingReady(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.MarkListingReady(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) GeneratePublishPackage(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.GeneratePublishPackage(c.Request.Context(), tenant, id, actorID(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) DownloadPublishPackage(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.PublishPackageFile(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=publish-package-v%d.zip", out.PackageVersion))
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.File(out.ArchivePath)
+}
+func (h *Handler) MarkListingPublishedManual(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body ManualPublishBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid manual publish body")
+		return
+	}
+	out, err := h.Svc.MarkPublishedManual(c.Request.Context(), tenant, id, actorID(c), body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) BulkGenerateListingContent(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body BulkListingContentBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid bulk content body")
+		return
+	}
+	response.OK(c, h.Svc.BulkGenerateListingContent(c.Request.Context(), tenant, actorID(c), body))
+}
+func (h *Handler) BulkGeneratePublishPackages(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body BulkPublishPackageBody
+	if c.ShouldBindJSON(&body) != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid bulk package body")
+		return
+	}
+	response.OK(c, h.Svc.BulkGeneratePublishPackages(c.Request.Context(), tenant, actorID(c), body))
 }
 func (h *Handler) UpdateListingDraft(c *gin.Context) {
 	if !h.write(c) {

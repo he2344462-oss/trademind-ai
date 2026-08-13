@@ -305,6 +305,13 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 		}
 		return result.Content, nil
 	}}
+	productFlowSvc.AIContentGenerate = func(ctx context.Context, prompt string) (string, string, string, error) {
+		result, err := aiGateway.Chat(ctx, aigate.ChatRequest{Messages: []aigate.Message{{Role: "system", Content: "用途=product_content。只能基于输入事实生成商品内容；禁止补充不存在的品牌、材质、认证、功效、库存、物流承诺、个人使用经历或消费者评价。严格输出 JSON。"}, {Role: "user", Content: prompt}}, Temperature: 0.2, MaxTokens: 1600, ResponseFormat: &aigate.ResponseFormat{Type: "json_object"}})
+		if err != nil {
+			return "", "", "", err
+		}
+		return result.Content, "configured_ai_gateway", result.Model, nil
+	}
 	if dep.Config != nil {
 		productFlowSvc.AnalysisQueueEnabled = dep.Config.CandidateAnalysisQueueEnabled
 		productFlowSvc.AnalysisQueueName = dep.Config.CandidateAnalysisQueueName

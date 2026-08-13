@@ -586,3 +586,8 @@ Market Signal 与 Performance CSV 分别提供 `/api/v1/imports/market-signals/{
 `GET /api/v1/calibration/report` 默认排除 fixture；只有显式 `includeTestData=true` 才纳入测试数据。报告包含 Recommendation Group、Score Bucket、维度观察、规则效果、Suggestion Only 和 Learning Readiness。样本不足统一标记 `insufficientSample`，报告不自动修改任何权重、阈值或 Blocker。
 
 Selection Config 使用 `/api/v1/selection-configs` 创建 `draft`，再经 `/:id/review` 和人工 `/:id/activate` 激活。新分析保存 `selectionConfigId` 和 `selectionConfigVersion`；历史分析保持原版本，不随新配置重新解释。
+## Sprint 6 AI 内容与半自动铺货
+
+Listing 内容使用不可变版本：`POST /api/v1/listing-drafts/:id/content/generate` 支持 `template_only` 与 `ai_generate`，AI 未配置、超时或非法 JSON 时降级模板。`PUT /content` 创建人工编辑新版本，`POST /content/review` 仅允许人工批准或退回。`POST /ready` 强制检查标题、描述、图片、SKU、定价、正利润、Blocker 和人工批准。
+
+`POST /api/v1/listing-drafts/:id/publish-packages` 生成 public/internal 隔离 ZIP；`GET /api/v1/publish-packages/:id/download` 下载。`POST /api/v1/listing-drafts/:id/published-manual` 只记录用户人工发布结果，不调用平台接口。Performance 导入可使用内部 listing ID，或通过已经人工回填的 `platformListingId` 解析 Listing。

@@ -1,4 +1,4 @@
-import { deleteJSON, getWithParams, postJSON, putJSON } from './request';
+import { deleteJSON, getBlob, getWithParams, postJSON, putJSON } from './request';
 
 export type Pagination = { page: number; pageSize: number; total: number; totalPages: number };
 export type Paged<T> = { list: T[]; pagination: Pagination };
@@ -31,7 +31,13 @@ export type ListingDraft = {
   id: string; catalogProductId: string; platform: 'xianyu' | 'taobao'; title: string;
   description?: string; images?: string[]; salePrice?: number; platformCategory?: string;
   platformSkuData?: unknown[]; publishStatus: string; estimatedProfit?: number; estimatedMargin?: number; pricingSnapshot?: PricingResult; createdAt: string;
+  currentContentVersionId?: string; publishMethod?: string; externalListingId?: string; listingUrl?: string;
 };
+export type ListingContentVersion = { id: string; listingDraftId: string; platform: string; version: number; generationMode: string; contentProfileVersion: string; promptVersion: string; title: string; description: string; sellingPoints: string[]; keywords: string[]; faq: Array<{ question: string; answer: string }>; skuContent: unknown[]; warnings: string[]; blockers: string[]; reviewStatus: string; aiStatus: string; modelProvider?: string; modelName?: string; createdAt: string };
+export type ListingAsset = { id: string; sourceUrl: string; sourceType: string; sourceReference?: string; sortOrder: number; isPrimary: boolean; excluded: boolean; mimeType?: string; sizeBytes: number };
+export type PublishPackage = { id: string; packageVersion: number; contentVersionId: string; pricingVersion: number; archiveHash: string; sizeBytes: number; generatedAt: string };
+export type ManualPublishRecord = { id: string; platformListingId: string; listingUrl?: string; publishMethod: 'manual'; publishedAt: string; notes?: string };
+export type ListingWorkspace = { listing: ListingDraft; catalog: CatalogProduct; content?: ListingContentVersion; assets: ListingAsset[]; packages: PublishPackage[]; publishRecords: ManualPublishRecord[] };
 
 const value = (input: unknown): string | number | undefined =>
   typeof input === 'string' || typeof input === 'number' ? input : undefined;
@@ -102,7 +108,23 @@ export const fetchListingDrafts = (params: Record<string, unknown>) => getWithPa
 export const updateListingDraft = (id: string, body: Partial<ListingDraft>) => putJSON<ListingDraft, Partial<ListingDraft>>(`/api/v1/listing-drafts/${id}`, body);
 export const deleteListingDraft = (id: string) => deleteJSON<{ deleted: boolean }>(`/api/v1/listing-drafts/${id}`);
 export const recalculateListingDraft = (id: string, pricingProfileId?: string) => postJSON<ListingDraft>(`/api/v1/listing-drafts/${id}/recalculate`, { pricingProfileId });
+export const fetchListingWorkspace = (id: string) => getWithParams<ListingWorkspace>(`/api/v1/listing-drafts/${id}/workspace`);
+export const fetchListingContentVersions = (id: string) => getWithParams<{ list: ListingContentVersion[] }>(`/api/v1/listing-drafts/${id}/content-versions`);
+export const generateListingContent = (id: string, generationMode: 'template_only' | 'ai_generate') => postJSON<ListingContentVersion>(`/api/v1/listing-drafts/${id}/content/generate`, { generationMode });
+export const updateListingContent = (id: string, body: Record<string, unknown>) => putJSON<ListingContentVersion, Record<string, unknown>>(`/api/v1/listing-drafts/${id}/content`, body);
+export const reviewListingContent = (id: string, action: 'approve' | 'reject') => postJSON<ListingContentVersion>(`/api/v1/listing-drafts/${id}/content/review`, { action });
+export const markListingReady = (id: string) => postJSON<ListingDraft>(`/api/v1/listing-drafts/${id}/ready`, {});
+export const generatePublishPackage = (id: string) => postJSON<PublishPackage>(`/api/v1/listing-drafts/${id}/publish-packages`, {});
+export const markListingPublishedManual = (id: string, body: Record<string, unknown>) => postJSON<ManualPublishRecord>(`/api/v1/listing-drafts/${id}/published-manual`, body);
+export const restoreListingContent = (id: string, contentVersionId: string) => postJSON<ListingContentVersion>(`/api/v1/listing-drafts/${id}/content/restore`, { contentVersionId });
+export const updateListingAssets = (id: string, assets: Array<Pick<ListingAsset, 'id' | 'sortOrder' | 'isPrimary' | 'excluded'>>) => putJSON<{ list: ListingAsset[] }, { assets: typeof assets }>(`/api/v1/listing-drafts/${id}/assets`, { assets });
+export const downloadPublishPackage = async (id: string, version: number) => {
+  const blob = await getBlob(`/api/v1/publish-packages/${id}/download`);
+  const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
+  anchor.href = url; anchor.download = `publish-package-v${version}.zip`; anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
 export type CostCenterSummary = { productCount: number; averageMarginBps: number; lowProfitCount: number; highProfitCount: number; costAnomalyCount: number; products: Array<CatalogProduct & { coverUrl?: string }> };
 export const fetchCostCenter = () => getWithParams<CostCenterSummary>('/api/v1/cost-center');
-export type SelectionDashboard = { todaySources: number; pendingCandidates: number; todayAnalyzed: number; strongRecommend: number; recommend: number; watch: number; reject: number; averageMarginBps: number; runningBatches: CandidateAnalysisBatch[]; pausedBatches: number; failedBatches: number; marketCoverageBps: number; realMarketCoverageBps: number; realPerformanceCoverageBps: number; calibrationSampleCount: number; calibrationReadiness: string; selectionConfigVersion: string; performanceUpdatedAt?: string; operationalSummary: string };
+export type SelectionDashboard = { todaySources: number; pendingCandidates: number; todayAnalyzed: number; strongRecommend: number; recommend: number; watch: number; reject: number; averageMarginBps: number; runningBatches: CandidateAnalysisBatch[]; pausedBatches: number; failedBatches: number; marketCoverageBps: number; realMarketCoverageBps: number; realPerformanceCoverageBps: number; calibrationSampleCount: number; calibrationReadiness: string; selectionConfigVersion: string; performanceUpdatedAt?: string; operationalSummary: string; pendingContent: number; pendingReview: number; readyToPublish: number; publishedListings: number; todayGeneratedContent: number; estimatedListingProfit: string };
 export const fetchSelectionDashboard = () => getWithParams<SelectionDashboard>('/api/v1/selection-dashboard');

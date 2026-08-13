@@ -218,6 +218,8 @@ const smokeRoutes = [
   { path: "/settings/selection-configs", name: /选品规则版本/ },
   { path: "/recommendations", name: /AI 推荐榜/ },
   { path: "/system/pricing-profiles", name: /平台费用模型/ },
+  { path: "/listing-drafts", name: /铺货工作台/ },
+  { path: "/listing-drafts/demo-listing/review", name: /内容审核/ },
   { path: "/dashboard/product-operations", name: /运营总览|工作台/ },
   { path: "/collect/hub", name: /采集中心/ },
   { path: "/ai/operation-workbench", name: /商品运营工作台/ },
@@ -245,7 +247,7 @@ test.describe("@smoke Admin route smoke", () => {
 
   test("keeps Sprint 5 pages usable at 375px without root overflow", async ({ admin, page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    for (const route of ["/data-imports", "/calibration", "/settings/market-providers", "/settings/selection-configs"]) {
+    for (const route of ["/data-imports", "/calibration", "/settings/market-providers", "/settings/selection-configs", "/listing-drafts", "/listing-drafts/demo-listing/review"]) {
       await admin.goto(route);
       await expect(page.locator("#root")).toBeVisible();
       await expectNoRootOverflow(page);

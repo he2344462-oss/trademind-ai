@@ -1,27 +1,33 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { ModalForm, ProFormDigit, ProFormText, ProFormTextArea } from '@ant-design/pro-components';
-import { Popconfirm, message } from 'antd';
-import { useRef, useState } from 'react';
+import { history } from '@umijs/max';
+import { Button, Space, Tag, message } from 'antd';
+import { useRef } from 'react';
 import { TmPageContainer, TmProTable as ProTable } from '@/components/ui';
-import { deleteListingDraft, fetchListingDrafts, updateListingDraft, type ListingDraft } from '@/services/productFlow';
-import { money, percent, statusTag } from '../shared';
+import { fetchListingDrafts, generateListingContent, type ListingDraft } from '@/services/productFlow';
+import { money, statusTag } from '../shared';
+
+const stateText: Record<string, string> = { draft: '待生成', content_generated: '已生成', needs_review: '待审核', approved: '已审核', ready_to_publish: '可发布', published_manual: '已人工发布' };
 
 export default function ListingDraftsPage() {
-  const actionRef = useRef<ActionType>(); const [editing, setEditing] = useState<ListingDraft>();
+  const actionRef = useRef<ActionType>();
+  const generate = async (row: ListingDraft, mode: 'template_only' | 'ai_generate') => {
+    await generateListingContent(row.id, mode); message.success(mode === 'ai_generate' ? 'AI 内容已生成；不可用时已自动使用模板' : '模板内容已生成'); actionRef.current?.reload();
+  };
   const columns: ProColumns<ListingDraft>[] = [
     { title: '商品', dataIndex: 'keyword', render: (_, r) => r.title, ellipsis: true },
-    { title: '平台', dataIndex: 'platform', valueType: 'select', valueEnum: { xianyu: { text: '闲鱼' }, taobao: { text: '淘宝' } }, width: 100 },
-    { title: '售价', dataIndex: 'salePrice', search: false, render: (_, r) => money(r.salePrice), width: 110 },
-    { title: '预计利润', dataIndex: 'estimatedProfit', search: false, render: (_, r) => money(r.estimatedProfit), width: 110 },
-    { title: '利润率', dataIndex: 'estimatedMargin', search: false, render: (_, r) => percent(r.estimatedMargin), width: 90 },
-    { title: '费用配置', search: false, render: (_, r) => r.pricingSnapshot?.profile.configured ? r.pricingSnapshot.profile.code : '未配置（按 0 计）', width: 150 },
-    { title: '状态', dataIndex: 'status', valueType: 'select', valueEnum: { draft: { text: '草稿' }, ready: { text: '就绪' } }, render: (_, r) => statusTag(r.publishStatus), width: 100 },
-    { title: '操作', valueType: 'option', render: (_, r) => [<a key="edit" onClick={() => setEditing(r)}>编辑</a>, <Popconfirm key="delete" title="仅删除这个未发布草稿，确定继续？" onConfirm={async () => { await deleteListingDraft(r.id); message.success('草稿已删除'); actionRef.current?.reload(); }}><a>删除</a></Popconfirm>] },
+    { title: '平台', dataIndex: 'platform', valueType: 'select', valueEnum: { xianyu: { text: '闲鱼' }, taobao: { text: '淘宝' } }, width: 90 },
+    { title: '内容状态', dataIndex: 'status', valueType: 'select', valueEnum: Object.fromEntries(Object.entries(stateText).map(([k, text]) => [k, { text }])), render: (_, r) => <Tag>{stateText[r.publishStatus] || r.publishStatus}</Tag>, width: 110 },
+    { title: '售价', search: false, render: (_, r) => money(r.salePrice), width: 100 },
+    { title: '预计利润', search: false, render: (_, r) => money(r.estimatedProfit), width: 110 },
+    { title: '图片', search: false, render: (_, r) => `${r.images?.length || 0} 张`, width: 80 },
+    { title: 'SKU', search: false, render: (_, r) => `${r.platformSkuData?.length || 0} 个`, width: 80 },
+    { title: '发布状态', search: false, render: (_, r) => statusTag(r.publishStatus), width: 110 },
+    { title: '操作', valueType: 'option', width: 270, render: (_, r) => <Space wrap>
+      <a onClick={() => generate(r, 'template_only')}>模板生成</a><a onClick={() => generate(r, 'ai_generate')}>AI 生成</a><a onClick={() => history.push(`/listing-drafts/${r.id}/review`)}>审核与发布包</a>
+    </Space> },
   ];
-  return <TmPageContainer title="铺货中心" subTitle="各平台可采用不同费用配置；本阶段只编辑草稿，不调用真实发布接口">
-    <ProTable<ListingDraft> rowKey="id" actionRef={actionRef} columns={columns} request={async (p) => { const r = await fetchListingDrafts(p); return { data: r.list, total: r.pagination.total, success: true }; }} />
-    <ModalForm title="编辑铺货草稿" open={Boolean(editing)} initialValues={editing ? { ...editing, imageUrls: editing.images?.join('\n') } : undefined} onOpenChange={(v) => !v && setEditing(undefined)} onFinish={async (v) => { if (!editing) return false; const images = String(v.imageUrls || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean); const { imageUrls: _, ...payload } = v; await updateListingDraft(editing.id, { ...payload, images }); message.success('草稿已更新'); actionRef.current?.reload(); return true; }}>
-      <ProFormText name="title" label="标题" rules={[{ required: true }]} /><ProFormTextArea name="description" label="描述" /><ProFormTextArea name="imageUrls" label="图片 URL" tooltip="每行一个 URL" /><ProFormDigit name="salePrice" label="售价" min={0} fieldProps={{ precision: 2 }} /><ProFormText name="platformCategory" label="平台类目" />
-    </ModalForm>
+  return <TmPageContainer title="铺货工作台" subTitle="生成平台差异化内容、人工审核并下载发布资料包；系统不会自动操作闲鱼或淘宝">
+    <Space style={{ marginBottom: 16 }}><Button onClick={() => actionRef.current?.reload()}>刷新</Button><Tag color="blue">预计利润不等于实际利润</Tag></Space>
+    <ProTable<ListingDraft> rowKey="id" actionRef={actionRef} columns={columns} scroll={{ x: 1080 }} request={async (p) => { const r = await fetchListingDrafts(p); return { data: r.list, total: r.pagination.total, success: true }; }} />
   </TmPageContainer>;
 }

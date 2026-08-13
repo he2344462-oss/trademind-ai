@@ -125,6 +125,49 @@ type UpdateListingDraftBody struct {
 	PublishStatus    *string         `json:"publishStatus"`
 }
 
+type GenerateListingContentBody struct {
+	GenerationMode string            `json:"generationMode"`
+	UserFacts      map[string]string `json:"userFacts"`
+}
+type UpdateListingContentBody struct {
+	Title         string              `json:"title"`
+	Description   string              `json:"description"`
+	SellingPoints []string            `json:"sellingPoints"`
+	Keywords      []string            `json:"keywords"`
+	FAQ           []map[string]string `json:"faq"`
+}
+type ReviewListingContentBody struct {
+	Action string `json:"action"`
+	Reason string `json:"reason"`
+}
+type ManualPublishBody struct {
+	PlatformListingID string     `json:"platformListingId" binding:"required"`
+	ListingURL        string     `json:"listingUrl"`
+	PublishedAt       *time.Time `json:"publishedAt"`
+	Notes             string     `json:"notes"`
+}
+type BulkListingContentBody struct {
+	CatalogProductIDs []uuid.UUID `json:"catalogProductIds"`
+	Platform          string      `json:"platform"`
+	GenerationMode    string      `json:"generationMode"`
+	PricingProfileID  *uuid.UUID  `json:"pricingProfileId"`
+}
+type RestoreListingContentBody struct {
+	ContentVersionID uuid.UUID `json:"contentVersionId" binding:"required"`
+}
+type ListingAssetUpdate struct {
+	ID        uuid.UUID `json:"id" binding:"required"`
+	SortOrder int       `json:"sortOrder"`
+	IsPrimary bool      `json:"isPrimary"`
+	Excluded  bool      `json:"excluded"`
+}
+type UpdateListingAssetsBody struct {
+	Assets []ListingAssetUpdate `json:"assets" binding:"required"`
+}
+type BulkPublishPackageBody struct {
+	ListingDraftIDs []uuid.UUID `json:"listingDraftIds" binding:"required"`
+}
+
 type ListQuery struct {
 	Page      int
 	PageSize  int
@@ -179,4 +222,10 @@ type SelectionDashboard struct {
 	SelectionConfigVersion     string                   `json:"selectionConfigVersion"`
 	PerformanceUpdatedAt       *time.Time               `json:"performanceUpdatedAt,omitempty"`
 	OperationalSummary         string                   `json:"operationalSummary"`
+	PendingContent             int64                    `json:"pendingContent"`
+	PendingReview              int64                    `json:"pendingReview"`
+	ReadyToPublish             int64                    `json:"readyToPublish"`
+	PublishedListings          int64                    `json:"publishedListings"`
+	TodayGeneratedContent      int64                    `json:"todayGeneratedContent"`
+	EstimatedListingProfit     string                   `json:"estimatedListingProfit"`
 }

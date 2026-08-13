@@ -40,3 +40,8 @@ TradeMind 已由项目所有者确认进入生产维护阶段。当前工作重�
 - 不创建或连接本地测试数据库。
 - 不修改 API、权限、状态机、业务语义或生产能力开关。
 - 后续变更仍须保持核心 CI 绿色，并完成人工验收说明。
+## Sprint 6（工作区，待人工签收）
+
+- 新增平台 Content Engine、不可变内容版本、人工审核与 Listing Ready 检查。
+- 新增 Product Asset、public/internal 发布资料包、人工发布记录和 Performance 关联。
+- Admin 新增铺货工作台与三栏内容审核页；不包含真实闲鱼/淘宝自动发布。

@@ -26,7 +26,7 @@ type CSVImportPreview struct {
 }
 
 var marketCSVFields = map[string]bool{"candidate_id": true, "platform": true, "signal_type": true, "value": true, "unit": true, "observed_at": true, "confidence": true, "source": true}
-var performanceCSVFields = map[string]bool{"candidate_id": true, "catalog_product_id": true, "listing_draft_id": true, "platform": true, "observed_at": true, "period_start": true, "period_end": true, "impressions": true, "views": true, "clicks": true, "favorites": true, "inquiries": true, "messages": true, "orders": true, "units_sold": true, "gross_revenue": true, "refund_amount": true, "platform_cost": true, "actual_cost": true, "realized_profit": true, "refund_count": true, "return_count": true, "after_sale_count": true}
+var performanceCSVFields = map[string]bool{"candidate_id": true, "catalog_product_id": true, "listing_draft_id": true, "platform_listing_id": true, "platform": true, "observed_at": true, "period_start": true, "period_end": true, "impressions": true, "views": true, "clicks": true, "favorites": true, "inquiries": true, "messages": true, "orders": true, "units_sold": true, "gross_revenue": true, "refund_amount": true, "platform_cost": true, "actual_cost": true, "realized_profit": true, "refund_count": true, "return_count": true, "after_sale_count": true}
 
 func validateMapping(mapping map[string]string, headers []string, allowed map[string]bool, required []string) error {
 	headerSet := map[string]bool{}
@@ -121,6 +121,7 @@ func performanceItemFromMap(row map[string]string) (ImportPerformanceItem, error
 		return ImportPerformanceItem{}, fmt.Errorf("platform contains an unsafe spreadsheet formula")
 	}
 	item := ImportPerformanceItem{CandidateID: candidateID, CatalogProductID: catalogID, Platform: row["platform"], Source: SignalOriginImport, ObservedAt: observed, PeriodStart: start, PeriodEnd: end}
+	item.PlatformListingID = strings.TrimSpace(row["platform_listing_id"])
 	if text := row["listing_draft_id"]; text != "" {
 		id, e := uuid.Parse(text)
 		if e != nil {

@@ -32,6 +32,7 @@ var (
 type Service struct {
 	DB                    *gorm.DB
 	AIExplain             func(context.Context, string) (string, error)
+	AIContentGenerate     func(context.Context, string) (content string, provider string, model string, err error)
 	Redis                 *rdb.Client
 	OpLog                 *operationlog.Service
 	AnalysisQueueEnabled  bool
@@ -389,6 +390,18 @@ func (s *Service) SelectionDashboard(ctx context.Context, tenantID int64) (*Sele
 	if err := db.Model(&ListingPerformanceSnapshot{}).Where("tenant_id = ?", tenantID).Select("MAX(observed_at)").Scan(&latest).Error; err == nil {
 		out.PerformanceUpdatedAt = latest
 	}
+	_ = db.Model(&ListingDraft{}).Where("tenant_id = ? AND publish_status = ?", tenantID, ListingStatusDraft).Count(&out.PendingContent).Error
+	_ = db.Model(&ListingDraft{}).Where("tenant_id = ? AND publish_status = ?", tenantID, ListingStatusNeedsReview).Count(&out.PendingReview).Error
+	_ = db.Model(&ListingDraft{}).Where("tenant_id = ? AND publish_status = ?", tenantID, ListingStatusReadyToPublish).Count(&out.ReadyToPublish).Error
+	_ = db.Model(&ListingDraft{}).Where("tenant_id = ? AND publish_status IN ?", tenantID, []string{ListingStatusPublishedManual, ListingStatusPublishedAPI}).Count(&out.PublishedListings).Error
+	_ = db.Model(&ListingContentVersion{}).Where("tenant_id = ? AND created_at >= ?", tenantID, start).Count(&out.TodayGeneratedContent).Error
+	var estimatedProfit *float64
+	_ = db.Model(&ListingDraft{}).Where("tenant_id = ? AND publish_status IN ?", tenantID, []string{ListingStatusApproved, ListingStatusReadyToPublish}).Select("SUM(estimated_profit)").Scan(&estimatedProfit).Error
+	if estimatedProfit != nil {
+		out.EstimatedListingProfit = fmt.Sprintf("%.2f", *estimatedProfit)
+	} else {
+		out.EstimatedListingProfit = "0.00"
+	}
 	out.OperationalSummary = fmt.Sprintf("当前共有 %d 个已分析商品，其中真实市场信号覆盖 %.0f%%，真实销售反馈覆盖 %.0f%%。校准准备度：%s；系统不会自动调整选品权重。", out.StrongRecommend+out.Recommend+out.Watch+out.Reject, float64(out.RealMarketCoverageBPS)/100, float64(out.RealPerformanceCoverageBPS)/100, out.CalibrationReadiness)
 	return out, nil
 }
@@ -733,7 +746,7 @@ func (s *Service) UpdateListingDraft(ctx context.Context, tenantID int64, id uui
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND id = ?", tenantID, id).First(&row).Error; err != nil {
 			return err
 		}
-		if row.PublishStatus == ListingStatusPublishing || row.PublishStatus == ListingStatusPublished || row.PublishStatus == ListingStatusOffline {
+		if row.PublishStatus == ListingStatusPublishing || row.PublishStatus == ListingStatusPublished || row.PublishStatus == ListingStatusPublishedManual || row.PublishStatus == ListingStatusPublishedAPI || row.PublishStatus == ListingStatusOffline {
 			return ErrInvalidTransition
 		}
 		updates := map[string]any{}
@@ -832,7 +845,7 @@ func (s *Service) DeleteListingDraft(ctx context.Context, tenantID int64, id uui
 	if err != nil {
 		return err
 	}
-	if row.PublishStatus == ListingStatusPublishing || row.PublishStatus == ListingStatusPublished || row.PublishStatus == ListingStatusOffline || row.ExternalListingID != "" || row.PublishedAt != nil {
+	if row.PublishStatus == ListingStatusPublishing || row.PublishStatus == ListingStatusPublished || row.PublishStatus == ListingStatusPublishedManual || row.PublishStatus == ListingStatusPublishedAPI || row.PublishStatus == ListingStatusOffline || row.ExternalListingID != "" || row.PublishedAt != nil {
 		return ErrInvalidTransition
 	}
 	return s.DB.WithContext(ctx).Delete(row).Error
@@ -843,7 +856,7 @@ func (s *Service) RecalculateListingDraft(ctx context.Context, tenantID int64, i
 	if err != nil {
 		return nil, err
 	}
-	if row.PublishStatus == ListingStatusPublishing || row.PublishStatus == ListingStatusPublished || row.PublishStatus == ListingStatusOffline {
+	if row.PublishStatus == ListingStatusPublishing || row.PublishStatus == ListingStatusPublished || row.PublishStatus == ListingStatusPublishedManual || row.PublishStatus == ListingStatusPublishedAPI || row.PublishStatus == ListingStatusOffline {
 		return nil, ErrInvalidTransition
 	}
 	profileID := body.PricingProfileID

@@ -20,6 +20,7 @@ import (
 
 type ImportPerformanceItem struct {
 	ListingDraftID                                                                *uuid.UUID `json:"listingDraftId"`
+	PlatformListingID                                                             string     `json:"platformListingId"`
 	CatalogProductID                                                              uuid.UUID  `json:"catalogProductId"`
 	CandidateID                                                                   uuid.UUID  `json:"candidateId"`
 	Platform                                                                      string     `json:"platform"`
@@ -106,6 +107,16 @@ func parseOptionalPerformanceMoney(value *string) (*int64, error) {
 func (s *Service) importPerformanceItem(ctx context.Context, tenantID int64, item ImportPerformanceItem) (*ListingPerformanceSnapshot, error) {
 	item.Platform = strings.ToLower(strings.TrimSpace(item.Platform))
 	item.Source = strings.ToLower(strings.TrimSpace(item.Source))
+	if item.ListingDraftID == nil && strings.TrimSpace(item.PlatformListingID) != "" {
+		var listing ListingDraft
+		if err := s.DB.WithContext(ctx).Where("tenant_id = ? AND platform = ? AND external_listing_id = ?", tenantID, item.Platform, strings.TrimSpace(item.PlatformListingID)).First(&listing).Error; err != nil {
+			return nil, ErrNotFound
+		}
+		item.ListingDraftID = &listing.ID
+		if item.CatalogProductID == uuid.Nil {
+			item.CatalogProductID = listing.CatalogProductID
+		}
+	}
 	if item.CandidateID == uuid.Nil || item.CatalogProductID == uuid.Nil || !SupportedDraftPlatform(item.Platform) || !performanceSourceAllowed(item.Source) {
 		return nil, fmt.Errorf("%w: invalid candidate, catalog, platform or source", ErrValidation)
 	}
@@ -155,7 +166,16 @@ func (s *Service) importPerformanceItem(ctx context.Context, tenantID int64, ite
 		}
 		raw = datatypes.JSON(item.RawData)
 	}
-	row := ListingPerformanceSnapshot{TenantID: tenantID, ListingDraftID: item.ListingDraftID, CatalogProductID: item.CatalogProductID, CandidateID: item.CandidateID, Platform: item.Platform, Source: item.Source, ObservedAt: item.ObservedAt.UTC(), PeriodStart: item.PeriodStart.UTC(), PeriodEnd: item.PeriodEnd.UTC(), Impressions: item.Impressions, Views: item.Views, Clicks: item.Clicks, Favorites: item.Favorites, Inquiries: item.Inquiries, Messages: item.Messages, Orders: item.Orders, UnitsSold: item.UnitsSold, GrossRevenue: gross, RefundAmount: refund, PlatformCost: platformCost, ActualCost: actualCost, RealizedProfit: profit, RefundCount: item.RefundCount, ReturnCount: item.ReturnCount, AfterSaleCount: item.AfterSaleCount, RawData: raw, Fingerprint: performanceFingerprint(tenantID, item)}
+	var contentVersionID *uuid.UUID
+	var pricingVersion int
+	if item.ListingDraftID != nil {
+		var listing ListingDraft
+		if s.DB.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, *item.ListingDraftID).First(&listing).Error == nil {
+			contentVersionID = listing.CurrentContentVersionID
+			pricingVersion = listing.PricingVersion
+		}
+	}
+	row := ListingPerformanceSnapshot{TenantID: tenantID, ListingDraftID: item.ListingDraftID, ContentVersionID: contentVersionID, PricingVersion: pricingVersion, CatalogProductID: item.CatalogProductID, CandidateID: item.CandidateID, Platform: item.Platform, Source: item.Source, ObservedAt: item.ObservedAt.UTC(), PeriodStart: item.PeriodStart.UTC(), PeriodEnd: item.PeriodEnd.UTC(), Impressions: item.Impressions, Views: item.Views, Clicks: item.Clicks, Favorites: item.Favorites, Inquiries: item.Inquiries, Messages: item.Messages, Orders: item.Orders, UnitsSold: item.UnitsSold, GrossRevenue: gross, RefundAmount: refund, PlatformCost: platformCost, ActualCost: actualCost, RealizedProfit: profit, RefundCount: item.RefundCount, ReturnCount: item.ReturnCount, AfterSaleCount: item.AfterSaleCount, RawData: raw, Fingerprint: performanceFingerprint(tenantID, item)}
 	if err := s.DB.WithContext(ctx).Create(&row).Error; err != nil {
 		if isUniqueError(err) {
 			return nil, ErrConflict

@@ -80,3 +80,8 @@ Changes under `backend/internal/modules/credentialp10`, `inventoryreadp10`, or `
 ProductFlow 外部 API 保持兼容，内部新增三个小边界：`credentialstore` 负责环境变量/KMS 可替换的凭据引用；`importcsv` 负责 Market 与 Performance 共用的安全 CSV 解析；`calibration` 负责不依赖数据库的 Recommendation、Score Bucket、维度、规则效果和 Readiness 计算。主包中的 `provider_config.go`、`selection_config.go`、`calibration_service.go` 继续承担应用服务与持久化编排，未重写既有 ProductFlow。
 
 Admin 对应 `Commerce/DataImports`、`Commerce/Calibration`、`Settings/MarketProviders` 和 `Settings/SelectionConfigs`。所有真实覆盖统计默认排除 fixture；Selection Config 激活必须写 Operation Log，新旧 Candidate Analysis 通过版本字段隔离。
+## Sprint 6 内容与半自动铺货
+
+- `backend/internal/modules/productflow/contentengine/`：平台 Profile、模板生成、事实边界、标题/关键词与 Content Risk Guard。
+- `backend/internal/modules/productflow/listing_content.go`：内容版本、人工审核、资产清单、发布资料包和 Manual Publish 记录。
+- `admin/src/pages/Commerce/ListingDrafts` 与 `ListingReview`：铺货工作台和三栏审核工作区。

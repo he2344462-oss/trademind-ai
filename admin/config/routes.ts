@@ -55,10 +55,11 @@ export default [
   },
   {
     path: '/listing-drafts',
-    name: '铺货中心',
+    name: '铺货工作台',
     icon: 'ShopOutlined',
     component: './Commerce/ListingDrafts',
   },
+  { path: '/listing-drafts/:id/review', name: '内容审核', hideInMenu: true, component: './Commerce/ListingReview' },
   {
     path: '/cost-center',
     name: '成本利润',
