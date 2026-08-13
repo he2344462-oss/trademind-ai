@@ -167,6 +167,19 @@ type UpdateListingAssetsBody struct {
 type BulkPublishPackageBody struct {
 	ListingDraftIDs []uuid.UUID `json:"listingDraftIds" binding:"required"`
 }
+type ContentQualityReviewBody struct {
+	Status             string `json:"status" binding:"required"`
+	TitleQuality       int    `json:"titleQuality"`
+	DescriptionQuality int    `json:"descriptionQuality"`
+	FactAccuracy       int    `json:"factAccuracy"`
+	WasEdited          bool   `json:"wasEdited"`
+	EditReason         string `json:"editReason"`
+}
+type CreateListingOperationBatchBody struct {
+	Operation       string      `json:"operation" binding:"required"`
+	ListingDraftIDs []uuid.UUID `json:"listingDraftIds" binding:"required"`
+	GenerationMode  string      `json:"generationMode"`
+}
 
 type ListQuery struct {
 	Page      int

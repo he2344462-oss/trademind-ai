@@ -32,13 +32,17 @@ var (
 type Service struct {
 	DB                    *gorm.DB
 	AIExplain             func(context.Context, string) (string, error)
-	AIContentGenerate     func(context.Context, string) (content string, provider string, model string, err error)
+	AIContentGenerate     func(context.Context, string) (AIContentResult, error)
 	Redis                 *rdb.Client
 	OpLog                 *operationlog.Service
 	AnalysisQueueEnabled  bool
 	AnalysisQueueName     string
 	AnalysisConcurrency   int
 	AnalysisMaxRetries    int
+	ContentQueueEnabled   bool
+	ContentQueueName      string
+	ContentConcurrency    int
+	PackageConcurrency    int
 	AIExplanationTopN     int
 	MarketSignalProviders []MarketSignalProvider
 	MarketSignalFreshness map[string]MarketSignalFreshnessPolicy
@@ -46,6 +50,16 @@ type Service struct {
 	// BeforeBatchAnalyze is an integration-test seam for deterministic transient failures.
 	// Production constructors leave it nil; it is never exposed through HTTP configuration.
 	BeforeBatchAnalyze func(context.Context, uuid.UUID, int) error
+}
+
+type AIContentResult struct {
+	Content      string
+	Provider     string
+	Model        string
+	InputTokens  int
+	OutputTokens int
+	CostMicros   int64
+	LatencyMS    int64
 }
 
 type CollectedSourceInput struct {

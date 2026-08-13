@@ -1,4 +1,4 @@
-import { deleteJSON, getBlob, getWithParams, postJSON, putJSON } from './request';
+import { deleteJSON, getBlob, getWithParams, postFormData, postJSON, putJSON } from './request';
 
 export type Pagination = { page: number; pageSize: number; total: number; totalPages: number };
 export type Paged<T> = { list: T[]; pagination: Pagination };
@@ -33,11 +33,12 @@ export type ListingDraft = {
   platformSkuData?: unknown[]; publishStatus: string; estimatedProfit?: number; estimatedMargin?: number; pricingSnapshot?: PricingResult; createdAt: string;
   currentContentVersionId?: string; publishMethod?: string; externalListingId?: string; listingUrl?: string;
 };
-export type ListingContentVersion = { id: string; listingDraftId: string; platform: string; version: number; generationMode: string; contentProfileVersion: string; promptVersion: string; title: string; description: string; sellingPoints: string[]; keywords: string[]; faq: Array<{ question: string; answer: string }>; skuContent: unknown[]; warnings: string[]; blockers: string[]; reviewStatus: string; aiStatus: string; modelProvider?: string; modelName?: string; createdAt: string };
-export type ListingAsset = { id: string; sourceUrl: string; sourceType: string; sourceReference?: string; sortOrder: number; isPrimary: boolean; excluded: boolean; mimeType?: string; sizeBytes: number };
+export type ListingContentVersion = { id: string; listingDraftId: string; platform: string; version: number; generationMode: string; contentProfileVersion: string; promptVersion: string; title: string; description: string; sellingPoints: string[]; keywords: string[]; faq: Array<{ question: string; answer: string }>; skuContent: unknown[]; warnings: string[]; blockers: string[]; reviewStatus: string; aiStatus: string; modelProvider?: string; modelName?: string; aiInputTokens: number; aiOutputTokens: number; aiCostMicros: number; aiLatencyMs: number; createdAt: string };
+export type ListingAsset = { id: string; sourceUrl: string; sourceType: string; sourceReference?: string; sortOrder: number; isPrimary: boolean; excluded: boolean; mimeType?: string; sizeBytes: number; cached: boolean };
 export type PublishPackage = { id: string; packageVersion: number; contentVersionId: string; pricingVersion: number; archiveHash: string; sizeBytes: number; generatedAt: string };
 export type ManualPublishRecord = { id: string; platformListingId: string; listingUrl?: string; publishMethod: 'manual'; publishedAt: string; notes?: string };
-export type ListingWorkspace = { listing: ListingDraft; catalog: CatalogProduct; content?: ListingContentVersion; assets: ListingAsset[]; packages: PublishPackage[]; publishRecords: ManualPublishRecord[] };
+export type ContentQualityReview = { id: string; status: 'approved' | 'needs_edit' | 'rejected'; titleQuality: number; descriptionQuality: number; factAccuracy: number; wasEdited: boolean; editReason?: string; createdAt: string };
+export type ListingWorkspace = { listing: ListingDraft; catalog: CatalogProduct; content?: ListingContentVersion; assets: ListingAsset[]; packages: PublishPackage[]; publishRecords: ManualPublishRecord[]; qualityReviews: ContentQualityReview[] };
 
 const value = (input: unknown): string | number | undefined =>
   typeof input === 'string' || typeof input === 'number' ? input : undefined;
@@ -118,6 +119,16 @@ export const generatePublishPackage = (id: string) => postJSON<PublishPackage>(`
 export const markListingPublishedManual = (id: string, body: Record<string, unknown>) => postJSON<ManualPublishRecord>(`/api/v1/listing-drafts/${id}/published-manual`, body);
 export const restoreListingContent = (id: string, contentVersionId: string) => postJSON<ListingContentVersion>(`/api/v1/listing-drafts/${id}/content/restore`, { contentVersionId });
 export const updateListingAssets = (id: string, assets: Array<Pick<ListingAsset, 'id' | 'sortOrder' | 'isPrimary' | 'excluded'>>) => putJSON<{ list: ListingAsset[] }, { assets: typeof assets }>(`/api/v1/listing-drafts/${id}/assets`, { assets });
+export const uploadListingAsset = (id: string, file: File) => { const data = new FormData(); data.append('file', file); return postFormData<ListingAsset>(`/api/v1/listing-drafts/${id}/assets/upload`, data); };
+export const deleteListingAsset = (listingId: string, assetId: string) => deleteJSON<{ deleted: boolean }>(`/api/v1/listing-drafts/${listingId}/assets/${assetId}`);
+export const viewListingAsset = (assetId: string) => getBlob(`/api/v1/listing-assets/${assetId}/file`);
+export const createContentQualityReview = (id: string, body: Record<string, unknown>) => postJSON<ContentQualityReview>(`/api/v1/listing-drafts/${id}/content-quality-reviews`, body);
+export type ListingOperationBatch = { id: string; operation: 'content_generation' | 'publish_package'; status: string; total: number; pending: number; processing: number; completed: number; failed: number; createdAt: string };
+export type ListingOperationBatchItem = { id: string; listingDraftId: string; status: string; attempts: number; errorMessage?: string; resultId?: string };
+export const createListingOperationBatch = (operation: ListingOperationBatch['operation'], listingDraftIds: string[], generationMode = 'template_only') => postJSON<ListingOperationBatch>('/api/v1/listing-operation-batches', { operation, listingDraftIds, generationMode });
+export const fetchListingOperationBatches = () => getWithParams<{ list: ListingOperationBatch[] }>('/api/v1/listing-operation-batches');
+export const fetchListingOperationBatchItems = (id: string) => getWithParams<{ list: ListingOperationBatchItem[] }>(`/api/v1/listing-operation-batches/${id}/items`);
+export const controlListingOperationBatch = (id: string, action: 'retry-failed' | 'cancel') => postJSON<ListingOperationBatch>(`/api/v1/listing-operation-batches/${id}/${action}`, {});
 export const downloadPublishPackage = async (id: string, version: number) => {
   const blob = await getBlob(`/api/v1/publish-packages/${id}/download`);
   const url = URL.createObjectURL(blob); const anchor = document.createElement('a');

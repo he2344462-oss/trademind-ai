@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,6 +44,14 @@ func sprint6Service(t *testing.T) (*Service, *ListingDraft) {
 	return svc, &l
 }
 
+func uploadTestImage(t *testing.T, svc *Service, listingID uuid.UUID) {
+	t.Helper()
+	pngBytes, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	if _, err := svc.UploadListingAsset(context.Background(), 0, listingID, "main.png", "image/png", bytes.NewReader(pngBytes)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestListingContentVersionsReviewReadyPackageAndManualPublish(t *testing.T) {
 	svc, l := sprint6Service(t)
 	ctx := context.Background()
@@ -60,15 +69,8 @@ func TestListingContentVersionsReviewReadyPackageAndManualPublish(t *testing.T) 
 	if _, err = svc.ReviewListingContent(ctx, 0, l.ID, ReviewListingContentBody{Action: "approve"}); err != nil {
 		t.Fatal(err)
 	}
+	uploadTestImage(t, svc, l.ID)
 	if _, err = svc.MarkListingReady(ctx, 0, l.ID); err != nil {
-		t.Fatal(err)
-	}
-	imagePath := t.TempDir() + "/main.png"
-	imageBytes := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
-	if err = os.WriteFile(imagePath, imageBytes, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err = svc.DB.Model(&ListingAsset{}).Where("listing_draft_id=?", l.ID).Updates(map[string]any{"cache_path": imagePath, "mime_type": "image/png", "size_bytes": len(imageBytes), "is_primary": true}).Error; err != nil {
 		t.Fatal(err)
 	}
 	pkg, err := svc.GeneratePublishPackage(ctx, 0, l.ID, nil)
@@ -121,7 +123,8 @@ func TestReadyBlockedByNegativeProfitAndMissingDescription(t *testing.T) {
 	}
 }
 func TestTrustedImageValidation(t *testing.T) {
-	if ValidateTrustedImageBytes("image/png", []byte{1, 2}) != nil {
+	pngBytes, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	if ValidateTrustedImageBytes("image/png", pngBytes) != nil {
 		t.Fatal("valid image rejected")
 	}
 	if ValidateTrustedImageBytes("text/html", []byte("x")) == nil {
@@ -164,19 +167,21 @@ func TestPackagePathFilenameAndDuplicateImageSecurity(t *testing.T) {
 func TestAIUnavailableTimeoutInvalidAndFabricatedContent(t *testing.T) {
 	cases := []struct {
 		name        string
-		fn          func(context.Context, string) (string, string, string, error)
+		fn          func(context.Context, string) (AIContentResult, error)
 		wantStatus  string
 		wantBlocker bool
 	}{
-		{"unavailable", func(context.Context, string) (string, string, string, error) {
-			return "", "", "", errors.New("not configured")
+		{"unavailable", func(context.Context, string) (AIContentResult, error) {
+			return AIContentResult{}, errors.New("not configured")
 		}, "fallback_template", false},
-		{"timeout", func(context.Context, string) (string, string, string, error) {
-			return "", "", "", context.DeadlineExceeded
+		{"timeout", func(context.Context, string) (AIContentResult, error) {
+			return AIContentResult{}, context.DeadlineExceeded
 		}, "fallback_template", false},
-		{"invalid json", func(context.Context, string) (string, string, string, error) { return "not-json", "fake", "fake", nil }, "fallback_template", false},
-		{"fabricated fact", func(context.Context, string) (string, string, string, error) {
-			return `{"title":"官方正品收纳盒","description":"航空铝合金，国家认证，当天发货","sellingPoints":["绝对保证"],"keywords":[]}`, "fake", "fake", nil
+		{"invalid json", func(context.Context, string) (AIContentResult, error) {
+			return AIContentResult{Content: "not-json", Provider: "fake", Model: "fake"}, nil
+		}, "fallback_template", false},
+		{"fabricated fact", func(context.Context, string) (AIContentResult, error) {
+			return AIContentResult{Content: `{"title":"官方正品收纳盒","description":"航空铝合金，国家认证，当天发货","sellingPoints":["绝对保证"],"keywords":[]}`, Provider: "fake", Model: "fake"}, nil
 		}, "succeeded", true},
 	}
 	for _, tc := range cases {
@@ -241,6 +246,7 @@ func TestFiveCatalogProductContentDemo(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			uploadTestImage(t, svc, l.ID)
 			_, err = svc.MarkListingReady(context.Background(), 0, l.ID)
 			if !tc.canReady {
 				if err == nil {
@@ -283,6 +289,7 @@ func TestSameCatalogHasIndependentXianyuAndTaobaoPackages(t *testing.T) {
 		if _, err = svc.ReviewListingContent(ctx, 0, listing.ID, ReviewListingContentBody{Action: "approve"}); err != nil {
 			t.Fatal(err)
 		}
+		uploadTestImage(t, svc, listing.ID)
 		if _, err = svc.MarkListingReady(ctx, 0, listing.ID); err != nil {
 			t.Fatal(err)
 		}

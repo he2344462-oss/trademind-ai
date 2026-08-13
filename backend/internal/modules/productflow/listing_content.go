@@ -31,12 +31,87 @@ const (
 )
 
 type ListingWorkspace struct {
-	Listing        *ListingDraft           `json:"listing"`
-	Catalog        *product.Product        `json:"catalog"`
-	Content        *ListingContentVersion  `json:"content,omitempty"`
-	Assets         []ListingAsset          `json:"assets"`
-	Packages       []ListingPublishPackage `json:"packages"`
-	PublishRecords []ManualPublishRecord   `json:"publishRecords"`
+	Listing        *ListingDraft                 `json:"listing"`
+	Catalog        *product.Product              `json:"catalog"`
+	Content        *ListingContentVersion        `json:"content,omitempty"`
+	Assets         []ListingAsset                `json:"assets"`
+	Packages       []ListingPublishPackage       `json:"packages"`
+	PublishRecords []ManualPublishRecord         `json:"publishRecords"`
+	QualityReviews []ListingContentQualityReview `json:"qualityReviews"`
+}
+
+type SellTestReadiness struct {
+	ListingDraftID          uuid.UUID `json:"listingDraftId"`
+	HasRealImages           bool      `json:"hasRealImages"`
+	ContentApproved         bool      `json:"contentApproved"`
+	SKUValid                bool      `json:"skuValid"`
+	SalePriceValid          bool      `json:"salePriceValid"`
+	PositiveEstimatedProfit bool      `json:"positiveEstimatedProfit"`
+	NoBlockers              bool      `json:"noBlockers"`
+	PublishPackageComplete  bool      `json:"publishPackageComplete"`
+	PublicInternalIsolated  bool      `json:"publicInternalIsolated"`
+	CanMarkManualPublished  bool      `json:"canMarkManualPublished"`
+	ReadyForManualSellTest  bool      `json:"readyForManualSellTest"`
+}
+
+func (s *Service) SellTestReadiness(ctx context.Context, tenantID int64, id uuid.UUID) (*SellTestReadiness, error) {
+	w, err := s.ListingWorkspace(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	var blockers []string
+	if w.Content != nil {
+		_ = json.Unmarshal(w.Content.Blockers, &blockers)
+	}
+	var skus []any
+	_ = json.Unmarshal(w.Listing.PlatformSKUData, &skus)
+	hasImages := false
+	for _, a := range w.Assets {
+		if !a.Excluded && a.Cached {
+			hasImages = true
+			break
+		}
+	}
+	completePackage, isolated := false, false
+	for _, p := range w.Packages {
+		if file, e := s.PublishPackageFile(ctx, tenantID, p.ID); e == nil && p.SizeBytes > 0 {
+			completePackage = true
+			isolated = verifyPackageIsolation(file.ArchivePath)
+			break
+		}
+	}
+	r := &SellTestReadiness{ListingDraftID: id, HasRealImages: hasImages, ContentApproved: w.Content != nil && w.Content.ReviewStatus == "approved", SKUValid: len(skus) > 0, SalePriceValid: w.Listing.SalePrice != nil && *w.Listing.SalePrice > 0, PositiveEstimatedProfit: w.Listing.EstimatedProfit != nil && *w.Listing.EstimatedProfit > 0, NoBlockers: len(blockers) == 0, PublishPackageComplete: completePackage, PublicInternalIsolated: isolated, CanMarkManualPublished: w.Listing.PublishStatus == ListingStatusReadyToPublish}
+	r.ReadyForManualSellTest = r.HasRealImages && r.ContentApproved && r.SKUValid && r.SalePriceValid && r.PositiveEstimatedProfit && r.NoBlockers && r.PublishPackageComplete && r.PublicInternalIsolated && r.CanMarkManualPublished
+	return r, nil
+}
+
+func verifyPackageIsolation(path string) bool {
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return false
+	}
+	defer zr.Close()
+	for _, f := range zr.File {
+		if !strings.HasPrefix(f.Name, "public/") {
+			continue
+		}
+		r, err := f.Open()
+		if err != nil {
+			return false
+		}
+		data, err := io.ReadAll(io.LimitReader(r, 1024*1024))
+		_ = r.Close()
+		if err != nil {
+			return false
+		}
+		text := strings.ToLower(string(data))
+		for _, forbidden := range []string{"sourceurl", "supplier", "purchasecost", "freightcost", "estimatedprofit", "estimatedmargin", "marketsignal", "overallscore", "1688.com"} {
+			if strings.Contains(text, forbidden) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (s *Service) contentInput(ctx context.Context, tenantID int64, listing *ListingDraft, userFacts map[string]string) (contentengine.Input, error) {
@@ -74,6 +149,16 @@ func (s *Service) contentInput(ctx context.Context, tenantID int64, listing *Lis
 func jsonData(v any) datatypes.JSON { b, _ := json.Marshal(v); return datatypes.JSON(b) }
 
 func (s *Service) GenerateListingContent(ctx context.Context, tenantID int64, id uuid.UUID, actor *uuid.UUID, body GenerateListingContentBody) (*ListingContentVersion, error) {
+	return s.generateListingContent(ctx, tenantID, id, actor, body, nil)
+}
+
+func (s *Service) generateListingContent(ctx context.Context, tenantID int64, id uuid.UUID, actor *uuid.UUID, body GenerateListingContentBody, batchItemID *uuid.UUID) (*ListingContentVersion, error) {
+	if batchItemID != nil {
+		var existing ListingContentVersion
+		if err := s.DB.WithContext(ctx).Where("operation_batch_item_id=?", *batchItemID).First(&existing).Error; err == nil {
+			return &existing, nil
+		}
+	}
 	listing, err := s.GetListingDraft(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
@@ -100,16 +185,19 @@ func (s *Service) GenerateListingContent(ctx context.Context, tenantID int64, id
 	aiStatus := "not_requested"
 	provider := ""
 	modelName := ""
+	inputTokens, outputTokens := 0, 0
+	var costMicros, latencyMS int64
 	if mode == contentengine.ModeAI {
 		aiStatus = "fallback_template"
 		if s.AIContentGenerate != nil {
-			raw, p, m, e := s.AIContentGenerate(ctx, contentengine.BuildPrompt(in, profile))
+			aiResult, e := s.AIContentGenerate(ctx, contentengine.BuildPrompt(in, profile))
 			if e == nil {
-				if parsed, parseErr := contentengine.ParseAI(raw, in, profile); parseErr == nil {
+				if parsed, parseErr := contentengine.ParseAI(aiResult.Content, in, profile); parseErr == nil {
 					out = parsed
 					aiStatus = "succeeded"
-					provider = p
-					modelName = m
+					provider, modelName = aiResult.Provider, aiResult.Model
+					inputTokens, outputTokens = aiResult.InputTokens, aiResult.OutputTokens
+					costMicros, latencyMS = aiResult.CostMicros, aiResult.LatencyMS
 				} else {
 					out.Warnings = append(out.Warnings, "AI返回格式无效，已降级为模板内容")
 				}
@@ -125,7 +213,7 @@ func (s *Service) GenerateListingContent(ctx context.Context, tenantID int64, id
 			return e
 		}
 		status := "needs_review"
-		row = ListingContentVersion{TenantID: tenantID, ListingDraftID: id, CatalogProductID: listing.CatalogProductID, Platform: listing.Platform, Version: maxVersion + 1, GenerationMode: mode, ContentProfileVersion: profile.Version, PromptVersion: profile.PromptVersion, InputSnapshot: jsonData(in), Title: out.Title, Description: out.Description, SellingPoints: jsonData(out.SellingPoints), Keywords: jsonData(out.Keywords), FAQ: jsonData(out.FAQ), SKUContent: jsonData(out.SKUContent), Warnings: jsonData(out.Warnings), Blockers: jsonData(out.Blockers), ReviewStatus: status, AIStatus: aiStatus, ModelProvider: provider, ModelName: modelName, CreatedBy: actor}
+		row = ListingContentVersion{TenantID: tenantID, ListingDraftID: id, CatalogProductID: listing.CatalogProductID, Platform: listing.Platform, Version: maxVersion + 1, GenerationMode: mode, ContentProfileVersion: profile.Version, PromptVersion: profile.PromptVersion, InputSnapshot: jsonData(in), Title: out.Title, Description: out.Description, SellingPoints: jsonData(out.SellingPoints), Keywords: jsonData(out.Keywords), FAQ: jsonData(out.FAQ), SKUContent: jsonData(out.SKUContent), Warnings: jsonData(out.Warnings), Blockers: jsonData(out.Blockers), ReviewStatus: status, AIStatus: aiStatus, ModelProvider: provider, ModelName: modelName, AIInputTokens: inputTokens, AIOutputTokens: outputTokens, AICostMicros: costMicros, AILatencyMS: latencyMS, CreatedBy: actor, OperationBatchItemID: batchItemID}
 		if e := tx.Create(&row).Error; e != nil {
 			return e
 		}
@@ -260,11 +348,11 @@ func (s *Service) MarkListingReady(ctx context.Context, tenantID int64, id uuid.
 	}
 	var blockers []string
 	_ = json.Unmarshal(cv.Blockers, &blockers)
-	var images []string
-	_ = json.Unmarshal(listing.Images, &images)
+	var cachedImages int64
+	_ = s.DB.WithContext(ctx).Model(&ListingAsset{}).Where("tenant_id=? AND listing_draft_id=? AND excluded=false AND cache_path<>''", tenantID, id).Count(&cachedImages).Error
 	var skus []any
 	_ = json.Unmarshal(listing.PlatformSKUData, &skus)
-	if cv.ReviewStatus != "approved" || strings.TrimSpace(cv.Title) == "" || strings.TrimSpace(cv.Description) == "" || len(images) == 0 || listing.SalePrice == nil || *listing.SalePrice <= 0 || listing.EstimatedProfit == nil || *listing.EstimatedProfit <= 0 || len(blockers) > 0 {
+	if cv.ReviewStatus != "approved" || strings.TrimSpace(cv.Title) == "" || strings.TrimSpace(cv.Description) == "" || cachedImages == 0 || listing.SalePrice == nil || *listing.SalePrice <= 0 || listing.EstimatedProfit == nil || *listing.EstimatedProfit <= 0 || len(blockers) > 0 {
 		return nil, fmt.Errorf("%w: publish checklist failed (approved content, title, description, image, price, sku/pricing and positive profit required)", ErrValidation)
 	}
 	if len(skus) == 0 {
@@ -297,6 +385,16 @@ func addZip(z *zip.Writer, name string, data []byte) error {
 }
 
 func (s *Service) GeneratePublishPackage(ctx context.Context, tenantID int64, id uuid.UUID, actor *uuid.UUID) (*ListingPublishPackage, error) {
+	return s.generatePublishPackage(ctx, tenantID, id, actor, nil)
+}
+
+func (s *Service) generatePublishPackage(ctx context.Context, tenantID int64, id uuid.UUID, actor *uuid.UUID, batchItemID *uuid.UUID) (*ListingPublishPackage, error) {
+	if batchItemID != nil {
+		var existing ListingPublishPackage
+		if err := s.DB.WithContext(ctx).Where("operation_batch_item_id=?", *batchItemID).First(&existing).Error; err == nil {
+			return &existing, nil
+		}
+	}
 	listing, err := s.GetListingDraft(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
@@ -347,19 +445,22 @@ func (s *Service) GeneratePublishPackage(ctx context.Context, tenantID int64, id
 	internalAssetManifest, _ := json.MarshalIndent(assets, "", "  ")
 	_ = addZip(z, "public/images/manifest.json", publicAssetManifest)
 	_ = addZip(z, "internal/image-sources.json", internalAssetManifest)
-	for i, a := range assets {
-		if a.CachePath != "" {
-			if info, e := os.Stat(a.CachePath); e == nil && info.Size() <= 10*1024*1024 {
-				f, e := os.Open(a.CachePath)
-				if e == nil {
-					data, e := io.ReadAll(io.LimitReader(f, 10*1024*1024+1))
-					_ = f.Close()
-					if e == nil && len(data) <= 10*1024*1024 {
-						_ = addZip(z, fmt.Sprintf("public/images/%02d%s", i+1, safeImageExt(a.MimeType)), data)
-					}
-				}
-			}
+	includedImages := 0
+	for _, a := range assets {
+		if a.CachePath == "" {
+			continue
 		}
+		data, e := trustedAssetBytes(tenantID, id, a)
+		if e != nil {
+			return nil, fmt.Errorf("%w: cached image validation failed", ErrValidation)
+		}
+		includedImages++
+		if e = addZip(z, fmt.Sprintf("public/images/%02d%s", includedImages, safeImageExt(a.MimeType)), data); e != nil {
+			return nil, e
+		}
+	}
+	if includedImages == 0 {
+		return nil, fmt.Errorf("%w: at least one cached image is required", ErrValidation)
 	}
 	if err = z.Close(); err != nil {
 		return nil, err
@@ -377,7 +478,7 @@ func (s *Service) GeneratePublishPackage(ctx context.Context, tenantID int64, id
 		return nil, err
 	}
 	manifest := map[string]any{"publicFiles": []string{"metadata.json", "title.txt", "description.txt", "selling-points.txt", "keywords.txt", "sku.json", "pricing.json", "images/"}, "internalFiles": []string{"source.json", "pricing.json", "image-sources.json"}, "contentVersion": cv.Version, "pricingVersion": listing.PricingVersion}
-	row := ListingPublishPackage{TenantID: tenantID, ListingDraftID: id, ContentVersionID: cv.ID, PackageVersion: version, PricingVersion: listing.PricingVersion, Manifest: jsonData(manifest), ArchivePath: path, ArchiveHash: hex.EncodeToString(sum[:]), SizeBytes: int64(buf.Len()), GeneratedAt: time.Now(), CreatedBy: actor}
+	row := ListingPublishPackage{TenantID: tenantID, ListingDraftID: id, ContentVersionID: cv.ID, PackageVersion: version, PricingVersion: listing.PricingVersion, Manifest: jsonData(manifest), ArchivePath: path, ArchiveHash: hex.EncodeToString(sum[:]), SizeBytes: int64(buf.Len()), GeneratedAt: time.Now(), CreatedBy: actor, OperationBatchItemID: batchItemID}
 	if err = s.DB.WithContext(ctx).Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -461,8 +562,12 @@ func (s *Service) ListingWorkspace(ctx context.Context, tenantID int64, id uuid.
 		}
 	}
 	s.DB.WithContext(ctx).Where("tenant_id=? AND listing_draft_id=?", tenantID, id).Order("sort_order").Find(&out.Assets)
+	for i := range out.Assets {
+		out.Assets[i].Cached = out.Assets[i].CachePath != "" && pathWithin(listingAssetRoot(tenantID, id), out.Assets[i].CachePath)
+	}
 	s.DB.WithContext(ctx).Where("tenant_id=? AND listing_draft_id=?", tenantID, id).Order("package_version DESC").Find(&out.Packages)
 	s.DB.WithContext(ctx).Where("tenant_id=? AND listing_draft_id=?", tenantID, id).Order("published_at DESC").Find(&out.PublishRecords)
+	s.DB.WithContext(ctx).Where("tenant_id=? AND listing_draft_id=?", tenantID, id).Order("created_at DESC").Find(&out.QualityReviews)
 	return out, nil
 }
 func (s *Service) ListContentVersions(ctx context.Context, tenantID int64, id uuid.UUID) ([]ListingContentVersion, error) {
@@ -517,6 +622,9 @@ func (s *Service) UpdateListingAssets(ctx context.Context, tenantID int64, id uu
 		}
 		return tx.Where("tenant_id=? AND listing_draft_id=?", tenantID, id).Order("sort_order").Find(&returnAssets).Error
 	})
+	for i := range returnAssets {
+		returnAssets[i].Cached = returnAssets[i].CachePath != "" && pathWithin(listingAssetRoot(tenantID, id), returnAssets[i].CachePath)
+	}
 	return returnAssets, err
 }
 
@@ -559,14 +667,8 @@ func (s *Service) BulkGenerateListingContent(ctx context.Context, tenantID int64
 // ValidateTrustedImageBytes applies cache limits after bytes were fetched through
 // the Collector outbound policy. It intentionally does not fetch arbitrary URLs.
 func ValidateTrustedImageBytes(contentType string, data []byte) error {
-	if len(data) == 0 || len(data) > 10*1024*1024 {
-		return fmt.Errorf("invalid image size")
-	}
-	switch strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0])) {
-	case "image/jpeg", "image/png", "image/webp", "image/gif":
-		return nil
-	}
-	return fmt.Errorf("unsupported image response")
+	_, _, err := detectImage(data, contentType)
+	return err
 }
 
 var _ = pricingengine.Money(0)

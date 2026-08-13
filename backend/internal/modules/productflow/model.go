@@ -198,7 +198,12 @@ type ListingContentVersion struct {
 	AIStatus              string         `gorm:"size:32;not null" json:"aiStatus"`
 	ModelProvider         string         `gorm:"size:64" json:"modelProvider,omitempty"`
 	ModelName             string         `gorm:"size:128" json:"modelName,omitempty"`
+	AIInputTokens         int            `gorm:"not null;default:0" json:"aiInputTokens"`
+	AIOutputTokens        int            `gorm:"not null;default:0" json:"aiOutputTokens"`
+	AICostMicros          int64          `gorm:"not null;default:0" json:"aiCostMicros"`
+	AILatencyMS           int64          `gorm:"not null;default:0" json:"aiLatencyMs"`
 	CreatedBy             *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
+	OperationBatchItemID  *uuid.UUID     `gorm:"type:char(36);uniqueIndex" json:"operationBatchItemId,omitempty"`
 }
 
 func (ListingContentVersion) TableName() string { return "listing_content_versions" }
@@ -218,23 +223,25 @@ type ListingAsset struct {
 	IsPrimary        bool       `gorm:"not null;default:false" json:"isPrimary"`
 	Excluded         bool       `gorm:"not null;default:false" json:"excluded"`
 	CachePath        string     `gorm:"size:1024" json:"-"`
+	Cached           bool       `gorm:"-" json:"cached"`
 }
 
 func (ListingAsset) TableName() string { return "listing_assets" }
 
 type ListingPublishPackage struct {
 	model.HardDeleteBase
-	TenantID         int64          `gorm:"not null;default:0;index" json:"tenantId"`
-	ListingDraftID   uuid.UUID      `gorm:"type:char(36);not null;uniqueIndex:idx_listing_package_version,priority:1;index" json:"listingDraftId"`
-	ContentVersionID uuid.UUID      `gorm:"type:char(36);not null;index" json:"contentVersionId"`
-	PackageVersion   int            `gorm:"not null;uniqueIndex:idx_listing_package_version,priority:2" json:"packageVersion"`
-	PricingVersion   int            `gorm:"not null" json:"pricingVersion"`
-	Manifest         datatypes.JSON `gorm:"type:jsonb;not null" json:"manifest"`
-	ArchivePath      string         `gorm:"size:1024" json:"-"`
-	ArchiveHash      string         `gorm:"size:64" json:"archiveHash"`
-	SizeBytes        int64          `gorm:"not null" json:"sizeBytes"`
-	GeneratedAt      time.Time      `gorm:"not null;index" json:"generatedAt"`
-	CreatedBy        *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
+	TenantID             int64          `gorm:"not null;default:0;index" json:"tenantId"`
+	ListingDraftID       uuid.UUID      `gorm:"type:char(36);not null;uniqueIndex:idx_listing_package_version,priority:1;index" json:"listingDraftId"`
+	ContentVersionID     uuid.UUID      `gorm:"type:char(36);not null;index" json:"contentVersionId"`
+	PackageVersion       int            `gorm:"not null;uniqueIndex:idx_listing_package_version,priority:2" json:"packageVersion"`
+	PricingVersion       int            `gorm:"not null" json:"pricingVersion"`
+	Manifest             datatypes.JSON `gorm:"type:jsonb;not null" json:"manifest"`
+	ArchivePath          string         `gorm:"size:1024" json:"-"`
+	ArchiveHash          string         `gorm:"size:64" json:"archiveHash"`
+	SizeBytes            int64          `gorm:"not null" json:"sizeBytes"`
+	GeneratedAt          time.Time      `gorm:"not null;index" json:"generatedAt"`
+	CreatedBy            *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
+	OperationBatchItemID *uuid.UUID     `gorm:"type:char(36);uniqueIndex" json:"operationBatchItemId,omitempty"`
 }
 
 func (ListingPublishPackage) TableName() string { return "listing_publish_packages" }
@@ -255,6 +262,57 @@ type ManualPublishRecord struct {
 }
 
 func (ManualPublishRecord) TableName() string { return "manual_publish_records" }
+
+type ListingContentQualityReview struct {
+	model.HardDeleteBase
+	TenantID           int64      `gorm:"not null;default:0;index" json:"tenantId"`
+	ListingDraftID     uuid.UUID  `gorm:"type:char(36);not null;index" json:"listingDraftId"`
+	ContentVersionID   uuid.UUID  `gorm:"type:char(36);not null;index" json:"contentVersionId"`
+	Status             string     `gorm:"size:32;not null;index" json:"status"`
+	TitleQuality       int        `gorm:"not null;default:0" json:"titleQuality"`
+	DescriptionQuality int        `gorm:"not null;default:0" json:"descriptionQuality"`
+	FactAccuracy       int        `gorm:"not null;default:0" json:"factAccuracy"`
+	WasEdited          bool       `gorm:"not null;default:false" json:"wasEdited"`
+	EditReason         string     `gorm:"type:text" json:"editReason,omitempty"`
+	CreatedBy          *uuid.UUID `gorm:"type:char(36);index" json:"createdBy,omitempty"`
+}
+
+func (ListingContentQualityReview) TableName() string { return "listing_content_quality_reviews" }
+
+type ListingOperationBatch struct {
+	model.HardDeleteBase
+	TenantID    int64          `gorm:"not null;default:0;index" json:"tenantId"`
+	Operation   string         `gorm:"size:32;not null;index" json:"operation"`
+	Status      string         `gorm:"size:32;not null;index" json:"status"`
+	Total       int            `gorm:"not null" json:"total"`
+	Pending     int            `gorm:"not null" json:"pending"`
+	Processing  int            `gorm:"not null" json:"processing"`
+	Completed   int            `gorm:"not null" json:"completed"`
+	Failed      int            `gorm:"not null" json:"failed"`
+	Options     datatypes.JSON `gorm:"type:jsonb;not null" json:"options"`
+	CreatedBy   *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
+	StartedAt   *time.Time     `json:"startedAt,omitempty"`
+	CompletedAt *time.Time     `json:"completedAt,omitempty"`
+}
+
+func (ListingOperationBatch) TableName() string { return "listing_operation_batches" }
+
+type ListingOperationBatchItem struct {
+	model.HardDeleteBase
+	TenantID       int64      `gorm:"not null;default:0;index" json:"tenantId"`
+	BatchID        uuid.UUID  `gorm:"type:char(36);not null;uniqueIndex:idx_listing_batch_item,priority:1;index" json:"batchId"`
+	ListingDraftID uuid.UUID  `gorm:"type:char(36);not null;uniqueIndex:idx_listing_batch_item,priority:2;index" json:"listingDraftId"`
+	Status         string     `gorm:"size:32;not null;index" json:"status"`
+	Attempts       int        `gorm:"not null;default:0" json:"attempts"`
+	MaxAttempts    int        `gorm:"not null;default:3" json:"maxAttempts"`
+	ResultID       *uuid.UUID `gorm:"type:char(36);index" json:"resultId,omitempty"`
+	ErrorMessage   string     `gorm:"type:text" json:"errorMessage,omitempty"`
+	WorkerID       string     `gorm:"size:128;index" json:"workerId,omitempty"`
+	StartedAt      *time.Time `json:"startedAt,omitempty"`
+	CompletedAt    *time.Time `json:"completedAt,omitempty"`
+}
+
+func (ListingOperationBatchItem) TableName() string { return "listing_operation_batch_items" }
 
 // PricingProfile stores a user-maintained estimate model. Monetary fixed fees are integer CNY fen; rates are basis points.
 type PricingProfile struct {

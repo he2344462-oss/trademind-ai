@@ -60,6 +60,10 @@ type Config struct {
 	CandidateAnalysisConcurrency  int
 	CandidateAnalysisMaxRetries   int
 	AIExplanationTopN             int
+	ListingOperationQueueEnabled  bool
+	ListingOperationQueueName     string
+	ContentGenerationConcurrency  int
+	PublishPackageConcurrency     int
 
 	// 1688 bulk collect throttling (conservative defaults; settings.collector can override).
 	CollectBatchConcurrency1688 int
@@ -257,6 +261,10 @@ func Load() (*Config, error) {
 		CandidateAnalysisConcurrency:  atoiOrDefault(os.Getenv("CANDIDATE_ANALYSIS_CONCURRENCY"), 4),
 		CandidateAnalysisMaxRetries:   atoiOrDefault(os.Getenv("CANDIDATE_ANALYSIS_MAX_RETRIES"), 2),
 		AIExplanationTopN:             atoiOrDefault(os.Getenv("AI_EXPLANATION_TOP_N"), 20),
+		ListingOperationQueueEnabled:  envBool(os.Getenv("LISTING_OPERATION_QUEUE_ENABLED"), true),
+		ListingOperationQueueName:     strings.TrimSpace(firstNonEmpty(os.Getenv("LISTING_OPERATION_QUEUE_NAME"), "listing:operation:batches")),
+		ContentGenerationConcurrency:  atoiOrDefault(os.Getenv("CONTENT_GENERATION_CONCURRENCY"), 2),
+		PublishPackageConcurrency:     atoiOrDefault(os.Getenv("PUBLISH_PACKAGE_CONCURRENCY"), 2),
 
 		CollectBatchConcurrency1688: atoiOrDefault(os.Getenv("COLLECT_BATCH_CONCURRENCY_1688"), 1),
 		CollectBatchDelayMinMs1688:  atoiOrDefault(os.Getenv("COLLECT_BATCH_DELAY_MIN_MS_1688"), 1500),

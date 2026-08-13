@@ -305,12 +305,13 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 		}
 		return result.Content, nil
 	}}
-	productFlowSvc.AIContentGenerate = func(ctx context.Context, prompt string) (string, string, string, error) {
+	productFlowSvc.AIContentGenerate = func(ctx context.Context, prompt string) (productflow.AIContentResult, error) {
+		started := time.Now()
 		result, err := aiGateway.Chat(ctx, aigate.ChatRequest{Messages: []aigate.Message{{Role: "system", Content: "用途=product_content。只能基于输入事实生成商品内容；禁止补充不存在的品牌、材质、认证、功效、库存、物流承诺、个人使用经历或消费者评价。严格输出 JSON。"}, {Role: "user", Content: prompt}}, Temperature: 0.2, MaxTokens: 1600, ResponseFormat: &aigate.ResponseFormat{Type: "json_object"}})
 		if err != nil {
-			return "", "", "", err
+			return productflow.AIContentResult{LatencyMS: time.Since(started).Milliseconds()}, err
 		}
-		return result.Content, "configured_ai_gateway", result.Model, nil
+		return productflow.AIContentResult{Content: result.Content, Provider: "configured_ai_gateway", Model: result.Model, InputTokens: result.InputTokens, OutputTokens: result.OutputTokens, LatencyMS: time.Since(started).Milliseconds()}, nil
 	}
 	if dep.Config != nil {
 		productFlowSvc.AnalysisQueueEnabled = dep.Config.CandidateAnalysisQueueEnabled
@@ -318,6 +319,10 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 		productFlowSvc.AnalysisConcurrency = dep.Config.CandidateAnalysisConcurrency
 		productFlowSvc.AnalysisMaxRetries = dep.Config.CandidateAnalysisMaxRetries
 		productFlowSvc.AIExplanationTopN = dep.Config.AIExplanationTopN
+		productFlowSvc.ContentQueueEnabled = dep.Config.ListingOperationQueueEnabled
+		productFlowSvc.ContentQueueName = dep.Config.ListingOperationQueueName
+		productFlowSvc.ContentConcurrency = dep.Config.ContentGenerationConcurrency
+		productFlowSvc.PackageConcurrency = dep.Config.PublishPackageConcurrency
 	}
 	productFlowH := &productflow.Handler{Svc: productFlowSvc}
 

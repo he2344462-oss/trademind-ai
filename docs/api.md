@@ -590,4 +590,6 @@ Selection Config 使用 `/api/v1/selection-configs` 创建 `draft`，再经 `/:i
 
 Listing 内容使用不可变版本：`POST /api/v1/listing-drafts/:id/content/generate` 支持 `template_only` 与 `ai_generate`，AI 未配置、超时或非法 JSON 时降级模板。`PUT /content` 创建人工编辑新版本，`POST /content/review` 仅允许人工批准或退回。`POST /ready` 强制检查标题、描述、图片、SKU、定价、正利润、Blocker 和人工批准。
 
+Sprint 6.1 图片与后台任务：`POST /api/v1/listing-drafts/:id/assets/upload` 仅接收可解码的 JPEG/PNG/WebP/GIF；`GET /api/v1/listing-assets/:id/file` 只读取 Listing 受控缓存根目录；`DELETE /api/v1/listing-drafts/:id/assets/:assetId` 只允许删除运营者上传资产。`POST /api/v1/listing-drafts/:id/content-quality-reviews` 保存人工质量结论。`/api/v1/listing-operation-batches` 提供内容/发布包异步批次、items、cancel 与 retry-failed。`GET /api/v1/listing-drafts/:id/sell-test-readiness` 返回人工实卖测试清单。
+
 `POST /api/v1/listing-drafts/:id/publish-packages` 生成 public/internal 隔离 ZIP；`GET /api/v1/publish-packages/:id/download` 下载。`POST /api/v1/listing-drafts/:id/published-manual` 只记录用户人工发布结果，不调用平台接口。Performance 导入可使用内部 listing ID，或通过已经人工回填的 `platformListingId` 解析 Listing。

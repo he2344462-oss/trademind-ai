@@ -44,4 +44,11 @@ TradeMind 已由项目所有者确认进入生产维护阶段。当前工作重�
 
 - 新增平台 Content Engine、不可变内容版本、人工审核与 Listing Ready 检查。
 - 新增 Product Asset、public/internal 发布资料包、人工发布记录和 Performance 关联。
+
+## Sprint 6.1（工作区，待人工签收）
+
+- 本地图片经 MIME + 文件签名 + 解码三重校验写入 Listing 专属受控缓存；发布包只接受该目录内的真实图片。
+- 内容生成和发布包支持 Redis 后台批次、分离并发、失败隔离、取消与失败项重试。
+- 内容版本记录 AI provider/model/token/cost（Provider 可提供时）/latency，AI 失败继续降级模板。
+- 新增人工质量记录与 Sell Test Readiness；不包含真实平台发布、Cookie 或自动采购能力。
 - Admin 新增铺货工作台与三栏内容审核页；不包含真实闲鱼/淘宝自动发布。

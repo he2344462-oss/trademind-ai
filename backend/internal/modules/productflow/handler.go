@@ -423,6 +423,22 @@ func (h *Handler) GetListingWorkspace(c *gin.Context) {
 	}
 	response.OK(c, out)
 }
+func (h *Handler) GetSellTestReadiness(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.SellTestReadiness(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
 func (h *Handler) ListListingContentVersions(c *gin.Context) {
 	tenant, ok := h.tenant(c)
 	if !ok {
@@ -486,6 +502,79 @@ func (h *Handler) UpdateListingAssets(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) UploadListingAsset(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxListingImageBytes+1024*1024)
+	header, err := c.FormFile("file")
+	if err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "image file required")
+		return
+	}
+	f, err := header.Open()
+	if err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "image cannot be opened")
+		return
+	}
+	defer f.Close()
+	out, err := h.Svc.UploadListingAsset(c.Request.Context(), tenant, id, header.Filename, header.Header.Get("Content-Type"), f)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ViewListingAsset(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListingAssetFile(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.Header("Content-Type", out.MimeType)
+	c.Header("Content-Disposition", "inline")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.File(out.CachePath)
+}
+func (h *Handler) DeleteListingAsset(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	listingID, ok := parseID(c)
+	if !ok {
+		return
+	}
+	assetID, err := uuid.Parse(strings.TrimSpace(c.Param("assetId")))
+	if err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid asset id")
+		return
+	}
+	if err = h.Svc.DeleteListingAsset(c.Request.Context(), tenant, listingID, assetID); err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"deleted": true})
 }
 func (h *Handler) GenerateListingContent(c *gin.Context) {
 	if !h.write(c) {
@@ -553,6 +642,30 @@ func (h *Handler) ReviewListingContent(c *gin.Context) {
 		return
 	}
 	out, err := h.Svc.ReviewListingContent(c.Request.Context(), tenant, id, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) CreateContentQualityReview(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body ContentQualityReviewBody
+	if c.ShouldBindJSON(&body) != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid quality review body")
+		return
+	}
+	out, err := h.Svc.CreateContentQualityReview(c.Request.Context(), tenant, id, actorID(c), body)
 	if err != nil {
 		fail(c, err)
 		return
@@ -668,6 +781,109 @@ func (h *Handler) BulkGeneratePublishPackages(c *gin.Context) {
 		return
 	}
 	response.OK(c, h.Svc.BulkGeneratePublishPackages(c.Request.Context(), tenant, actorID(c), body))
+}
+func (h *Handler) CreateListingOperationBatch(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body CreateListingOperationBatchBody
+	if c.ShouldBindJSON(&body) != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid listing batch body")
+		return
+	}
+	out, err := h.Svc.CreateListingOperationBatch(c.Request.Context(), tenant, actorID(c), body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ListListingOperationBatches(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	out, err := h.Svc.ListListingOperationBatches(c.Request.Context(), tenant, limit)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) GetListingOperationBatch(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.GetListingOperationBatch(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ListListingOperationBatchItems(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListListingOperationBatchItems(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) RetryFailedListingOperationBatch(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.RetryFailedListingOperationBatch(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) CancelListingOperationBatch(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.CancelListingOperationBatch(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
 }
 func (h *Handler) UpdateListingDraft(c *gin.Context) {
 	if !h.write(c) {

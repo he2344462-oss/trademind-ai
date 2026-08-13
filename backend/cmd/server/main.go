@@ -387,6 +387,12 @@ func main() {
 	} else if cfg.CandidateAnalysisQueueEnabled && redisClient == nil {
 		log.Warn("candidate_analysis_worker_skipped", "reason", "redis unavailable while CANDIDATE_ANALYSIS_QUEUE_ENABLED=true")
 	}
+	if cfg.ListingOperationQueueEnabled && redisClient != nil && collectSvc != nil && collectSvc.ProductFlow != nil {
+		productflow.StartListingOperationWorkers(workerCtx, &workerWG, log, collectSvc.ProductFlow)
+		log.Info("listing_operation_workers_started", "content_concurrency", cfg.ContentGenerationConcurrency, "package_concurrency", cfg.PublishPackageConcurrency, "queue", cfg.ListingOperationQueueName)
+	} else if cfg.ListingOperationQueueEnabled && redisClient == nil {
+		log.Warn("listing_operation_workers_skipped", "reason", "redis unavailable while LISTING_OPERATION_QUEUE_ENABLED=true")
+	}
 
 	if cfg.ImageQueueEnabled && redisClient != nil && imageTaskSvc != nil {
 		qn := strings.TrimSpace(cfg.ImageQueueName)

@@ -84,4 +84,7 @@ Admin 对应 `Commerce/DataImports`、`Commerce/Calibration`、`Settings/MarketP
 
 - `backend/internal/modules/productflow/contentengine/`：平台 Profile、模板生成、事实边界、标题/关键词与 Content Risk Guard。
 - `backend/internal/modules/productflow/listing_content.go`：内容版本、人工审核、资产清单、发布资料包和 Manual Publish 记录。
+- `backend/internal/modules/productflow/listing_assets.go`：运营者本地图片上传、真实文件类型校验、hash 去重、受控缓存、只读货源图边界与安全预览。
+- `backend/internal/modules/productflow/listing_batch.go`：内容生成/发布包 Redis 后台批次、并发限制、失败隔离、重试与幂等结果关联。
+- `backend/internal/modules/productflow/content_quality.go`：人工内容质量结论与事实准确性记录；仅用于验收记录，不自动训练或调权。
 - `admin/src/pages/Commerce/ListingDrafts` 与 `ListingReview`：铺货工作台和三栏审核工作区。
