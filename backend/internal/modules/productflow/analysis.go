@@ -227,7 +227,7 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 	if candidate.Status == CandidateStatusApproved {
 		return nil, fmt.Errorf("%w: approved candidate analysis is immutable", ErrInvalidTransition)
 	}
-	profile, err := profileFromBody(platform, body.PricingProfile)
+	profile, profileID, err := s.resolvePricingProfile(ctx, tenantID, platform, body.PricingProfileID, body.PricingProfile)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
@@ -240,6 +240,10 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 	sku, err := analyzeSKUs(candidate.SourceProduct, costIn)
+	if err != nil {
+		return nil, err
+	}
+	market, marketViews, err := s.marketDimensions(ctx, tenantID, id, platform)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +262,7 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 		}
 	}
 	scoreCfg := selectionengine.DefaultConfig()
-	score := selectionengine.Score(selectionengine.Input{Pricing: cost, MinimumSKUMarginBPS: sku.MinimumSKUMarginBPS, Product: selectionengine.ProductData{Title: candidate.SourceProduct.OriginalTitle, Description: candidate.SourceProduct.OriginalDescription, ImageCount: len(images), SKUCount: len(rawSKUs), CompleteSKUCount: complete, HasPurchaseCost: candidate.SourceProduct.SourcePrice != nil, HasFreight: candidate.SourceProduct.Freight != nil, Supplier: candidate.SourceProduct.SupplierName, SourceURL: candidate.SourceProduct.SourceURL, Category: candidate.SourceProduct.OriginalCategory, MOQ: candidate.SourceProduct.MinOrderQuantity, HasStockData: hasStock, CollectedAt: candidate.SourceProduct.CollectedAt, Platform: platform}}, scoreCfg)
+	score := selectionengine.Score(selectionengine.Input{Pricing: cost, MinimumSKUMarginBPS: sku.MinimumSKUMarginBPS, Market: market, Product: selectionengine.ProductData{Title: candidate.SourceProduct.OriginalTitle, Description: candidate.SourceProduct.OriginalDescription, ImageCount: len(images), SKUCount: len(rawSKUs), CompleteSKUCount: complete, HasPurchaseCost: candidate.SourceProduct.SourcePrice != nil, HasFreight: candidate.SourceProduct.Freight != nil, Supplier: candidate.SourceProduct.SupplierName, SourceURL: candidate.SourceProduct.SourceURL, Category: candidate.SourceProduct.OriginalCategory, MOQ: candidate.SourceProduct.MinOrderQuantity, HasStockData: hasStock, CollectedAt: candidate.SourceProduct.CollectedAt, Platform: platform}}, scoreCfg)
 	explanation := templateExplanation(score, cost)
 	aiStatus := "not_requested"
 	if mode == "ai_explanation" && s.AIExplain != nil {
@@ -280,6 +284,8 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 	costJSON, _ := json.Marshal(cost)
 	skuJSON, _ := json.Marshal(sku)
 	scoreJSON, _ := json.Marshal(score.Dimensions)
+	marketJSON, _ := json.Marshal(marketViews)
+	confidenceJSON, _ := json.Marshal(score.ConfidenceBreakdown)
 	reasons, _ := json.Marshal(score.Reasons)
 	warnings, _ := json.Marshal(score.Warnings)
 	blockers, _ := json.Marshal(score.Blockers)
@@ -292,7 +298,7 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 			return e
 		}
 		version := locked.AnalysisVersion + 1
-		saved = CandidateAnalysis{TenantID: tenantID, CandidateID: id, AnalysisVersion: version, AnalysisMode: mode, Platform: platform, InputSnapshot: inputJSON, CostSnapshot: costJSON, SKUSnapshot: skuJSON, ScoreBreakdown: scoreJSON, OverallScore: score.OverallScore, ConfidenceScore: score.ConfidenceScore, Recommendation: score.Recommendation, Reasons: reasons, Warnings: warnings, Blockers: blockers, Explanation: explainJSON, AIStatus: aiStatus}
+		saved = CandidateAnalysis{TenantID: tenantID, CandidateID: id, AnalysisVersion: version, AnalysisMode: mode, Platform: platform, InputSnapshot: inputJSON, CostSnapshot: costJSON, SKUSnapshot: skuJSON, ScoreBreakdown: scoreJSON, OverallScore: score.OverallScore, ConfidenceScore: score.ConfidenceScore, Recommendation: score.Recommendation, Reasons: reasons, Warnings: warnings, Blockers: blockers, Explanation: explainJSON, AIStatus: aiStatus, PricingProfileID: profileID, MarketSignalSnapshot: marketJSON, ConfidenceBreakdown: confidenceJSON}
 		if e := tx.Create(&saved).Error; e != nil {
 			return e
 		}
@@ -302,7 +308,7 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 		} else if score.Recommendation == selectionengine.RecommendationReject {
 			status = CandidateStatusRejected
 		}
-		updates := map[string]any{"status": status, "potential_score": score.OverallScore, "profit_score": score.Dimensions["profit"].Score, "data_quality_score": score.Dimensions["data_quality"].Score, "supply_score": score.Dimensions["supply"].Score, "risk_score": score.Dimensions["risk"].Score, "demand_score": nil, "competition_score": nil, "ai_score": nil, "confidence_score": float64(score.ConfidenceScore) / 100, "analysis_version": version, "analyzed_at": now, "recommendation": score.Recommendation, "analysis_summary": explanation.Conclusion, "estimated_cost": moneyFloat(cost.EstimatedTotalCost), "estimated_sale_price": moneyFloat(cost.SuggestedSalePrice), "estimated_profit": moneyFloat(cost.EstimatedProfit), "estimated_margin": bpsFloat(cost.EstimatedMarginBPS)}
+		updates := map[string]any{"status": status, "potential_score": score.OverallScore, "profit_score": score.Dimensions["profit"].Score, "data_quality_score": score.Dimensions["data_quality"].Score, "supply_score": score.Dimensions["supply"].Score, "risk_score": score.Dimensions["risk"].Score, "demand_score": score.Dimensions["demand"].Score, "competition_score": score.Dimensions["competition"].Score, "ai_score": nil, "confidence_score": float64(score.ConfidenceScore) / 100, "analysis_version": version, "analyzed_at": now, "recommendation": score.Recommendation, "analysis_summary": explanation.Conclusion, "estimated_cost": moneyFloat(cost.EstimatedTotalCost), "estimated_sale_price": moneyFloat(cost.SuggestedSalePrice), "estimated_profit": moneyFloat(cost.EstimatedProfit), "estimated_margin": bpsFloat(cost.EstimatedMarginBPS)}
 		return tx.Model(&locked).Updates(updates).Error
 	})
 	if err != nil {

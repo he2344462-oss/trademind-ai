@@ -42,6 +42,7 @@ type AnalyzeCandidateBody struct {
 	MinimumMarginBPS   int64              `json:"minimumMarginBps"`
 	SalePrice          string             `json:"salePrice"`
 	PricingProfile     PricingProfileBody `json:"pricingProfile"`
+	PricingProfileID   *uuid.UUID         `json:"pricingProfileId"`
 }
 
 type PricingProfileBody struct {
@@ -56,9 +57,61 @@ type PricingProfileBody struct {
 }
 
 type CreateListingDraftBody struct {
-	Platform       string              `json:"platform" binding:"required"`
-	ShopID         *uuid.UUID          `json:"shopId"`
-	PricingProfile *PricingProfileBody `json:"pricingProfile"`
+	Platform         string              `json:"platform" binding:"required"`
+	ShopID           *uuid.UUID          `json:"shopId"`
+	PricingProfile   *PricingProfileBody `json:"pricingProfile"`
+	PricingProfileID *uuid.UUID          `json:"pricingProfileId"`
+}
+
+type PricingProfileInput struct {
+	Name             string `json:"name" binding:"required"`
+	Platform         string `json:"platform" binding:"required"`
+	Currency         string `json:"currency"`
+	PlatformFeeBPS   int64  `json:"platformFeeBps"`
+	PlatformFeeFixed string `json:"platformFeeFixed"`
+	PaymentFeeBPS    int64  `json:"paymentFeeBps"`
+	PaymentFeeFixed  string `json:"paymentFeeFixed"`
+	ReturnReserveBPS int64  `json:"returnReserveBps"`
+	OtherBPS         int64  `json:"otherBps"`
+	OtherFixed       string `json:"otherFixed"`
+	IsDefault        bool   `json:"isDefault"`
+	Enabled          *bool  `json:"enabled"`
+}
+
+type BatchFilters struct {
+	Status         string `json:"status"`
+	SourcePlatform string `json:"sourcePlatform"`
+	UnanalyzedOnly bool   `json:"unanalyzedOnly"`
+	Limit          int    `json:"limit"`
+}
+
+type AnalyzeBatchBody struct {
+	CandidateIDs      []uuid.UUID  `json:"candidateIds"`
+	Filters           BatchFilters `json:"filters"`
+	Platform          string       `json:"platform"`
+	AnalysisMode      string       `json:"analysisMode"`
+	PricingProfileID  *uuid.UUID   `json:"pricingProfileId"`
+	MinimumScore      int64        `json:"minimumScore"`
+	MinimumMarginBPS  int64        `json:"minimumMarginBps"`
+	MinimumProfit     string       `json:"minimumProfit"`
+	MinimumConfidence int64        `json:"minimumConfidence"`
+	ExcludeBlocked    *bool        `json:"excludeBlocked"`
+	TopN              int          `json:"topN"`
+}
+
+type BulkCandidateActionBody struct {
+	CandidateIDs []uuid.UUID `json:"candidateIds" binding:"required"`
+	Reason       string      `json:"reason"`
+	Source       string      `json:"source"`
+	AllowBlocked bool        `json:"allowBlocked"`
+}
+
+type BulkSourceImportBody struct {
+	Items []CreateSourceProductBody `json:"items" binding:"required"`
+}
+
+type RecalculateListingBody struct {
+	PricingProfileID *uuid.UUID `json:"pricingProfileId"`
 }
 
 type UpdateListingDraftBody struct {
@@ -103,4 +156,16 @@ type CostCenterSummary struct {
 	HighProfitCount  int64 `json:"highProfitCount"`
 	CostAnomalyCount int64 `json:"costAnomalyCount"`
 	Products         []any `json:"products"`
+}
+
+type SelectionDashboard struct {
+	TodaySources      int64                    `json:"todaySources"`
+	PendingCandidates int64                    `json:"pendingCandidates"`
+	TodayAnalyzed     int64                    `json:"todayAnalyzed"`
+	StrongRecommend   int64                    `json:"strongRecommend"`
+	Recommend         int64                    `json:"recommend"`
+	Watch             int64                    `json:"watch"`
+	Reject            int64                    `json:"reject"`
+	AverageMarginBPS  int64                    `json:"averageMarginBps"`
+	RunningBatches    []CandidateAnalysisBatch `json:"runningBatches"`
 }

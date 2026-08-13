@@ -56,6 +56,15 @@ func TestRiskKeywordIsWarningNotAutomaticBlocker(t *testing.T) {
 	require.NotEmpty(t, r.Warnings)
 	require.Empty(t, r.Blockers)
 }
+func TestFreshMarketDimensionsParticipateAndExpiredAreExcludedByProvider(t *testing.T) {
+	in := baseInput()
+	in.Market = map[string]MarketDimension{"demand": {Score: 82, ConfidenceBPS: 8000, Freshness: "fresh"}, "competition": {Score: 60, ConfidenceBPS: 6000, Freshness: "stale"}}
+	r := Score(in, DefaultConfig())
+	require.NotNil(t, r.Dimensions["demand"].Score)
+	require.NotNil(t, r.Dimensions["competition"].Score)
+	require.Empty(t, r.MissingDimensions)
+	require.Greater(t, r.ConfidenceBreakdown.MarketCoverageBPS, int64(0))
+}
 func (d Dimension) ScoreValue() int64 {
 	if d.Score == nil {
 		return 0

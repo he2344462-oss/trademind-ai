@@ -36,12 +36,14 @@ export default [
     icon: 'DatabaseOutlined',
     component: './Commerce/SourceProducts',
   },
+  { path: '/selection-dashboard', name: '选品工作台', icon: 'FundOutlined', component: './Commerce/SelectionDashboard' },
   {
     path: '/candidates',
     name: 'AI 选品',
     icon: 'ExperimentOutlined',
     component: './Commerce/Candidates',
   },
+  { path: '/recommendations', name: 'AI 推荐榜', icon: 'TrophyOutlined', component: './Commerce/Recommendations' },
   {
     path: '/catalog-products',
     name: '商品库',
@@ -66,6 +68,7 @@ export default [
     icon: 'AuditOutlined',
     component: './System/OperationLogs',
   },
+  { path: '/system/pricing-profiles', name: '平台费用', icon: 'DollarOutlined', component: './Settings/PricingProfiles' },
   {
     path: '/ops',
     name: '运维',

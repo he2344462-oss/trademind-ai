@@ -237,3 +237,6 @@ The project is in production maintenance, while repository runtime controls rema
 | `P10_AUTOMATIC_RETRY_ENABLED` | `false` | Automatic business retry guard; must remain false. |
 
 No current configuration can promote the application beyond L0. Promotion requires later code/config review plus manual and external acceptance; setting any real capability flag now makes startup validation fail.
+# Sprint 3 批量选品 Worker
+
+`CANDIDATE_ANALYSIS_QUEUE_ENABLED` 控制 Redis 批量分析队列；生产模板默认关闭，启用前必须确认 Redis 可用。`CANDIDATE_ANALYSIS_QUEUE_NAME` 默认 `candidate:analysis:batches`，`CANDIDATE_ANALYSIS_CONCURRENCY` 控制并发（1–32），`CANDIDATE_ANALYSIS_MAX_RETRIES` 控制单商品失败重试次数。`AI_EXPLANATION_TOP_N` 只在批次选择 `ai_explanation` 时对规则排名后的前 N 项调用 AI；默认批次为 `rules_only`，没有 AI Key 时仍可完成。

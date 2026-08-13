@@ -9,8 +9,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/trademind-ai/trademind/backend/internal/pkg/adminperm"
+	"github.com/trademind-ai/trademind/backend/internal/pkg/ctxkey"
 	"github.com/trademind-ai/trademind/backend/internal/pkg/response"
 )
+
+func actorID(c *gin.Context) *uuid.UUID {
+	if value, ok := c.Get(ctxkey.AdminID); ok {
+		if text, ok := value.(string); ok {
+			if id, err := uuid.Parse(text); err == nil {
+				return &id
+			}
+		}
+	}
+	return nil
+}
 
 type Handler struct{ Svc *Service }
 
@@ -118,6 +130,18 @@ func (h *Handler) CostCenter(c *gin.Context) {
 		return
 	}
 	out, err := h.Svc.CostCenter(c.Request.Context(), tenant)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) SelectionDashboard(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.SelectionDashboard(c.Request.Context(), tenant)
 	if err != nil {
 		fail(c, err)
 		return
@@ -422,4 +446,239 @@ func (h *Handler) DeleteListingDraft(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{"deleted": true})
+}
+
+func (h *Handler) CreateAnalysisBatch(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body AnalyzeBatchBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+		return
+	}
+	out, err := h.Svc.CreateAnalysisBatch(c.Request.Context(), tenant, actorID(c), body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"batchJobId": out.ID, "batch": out})
+}
+func (h *Handler) GetAnalysisBatch(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.GetAnalysisBatch(c.Request.Context(), tenant, id, c.Query("includeItems") == "true")
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) TopRecommendations(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	out, err := h.Svc.TopRecommendations(c.Request.Context(), tenant, id, limit)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) CreateMarketSignal(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body CreateMarketSignalBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+		return
+	}
+	out, err := h.Svc.CreateMarketSignal(c.Request.Context(), tenant, id, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ListMarketSignals(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListMarketSignals(c.Request.Context(), tenant, id, c.Query("platform"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) ListPricingProfiles(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListPricingProfiles(c.Request.Context(), tenant, c.Query("platform"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) CreatePricingProfile(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body PricingProfileInput
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+		return
+	}
+	out, err := h.Svc.CreatePricingProfile(c.Request.Context(), tenant, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) UpdatePricingProfile(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body PricingProfileInput
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+		return
+	}
+	out, err := h.Svc.UpdatePricingProfile(c.Request.Context(), tenant, id, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) DeletePricingProfile(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	if err := h.Svc.DeletePricingProfile(c.Request.Context(), tenant, id); err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"deleted": true})
+}
+func (h *Handler) BulkCandidateAction(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body BulkCandidateActionBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+		return
+	}
+	out, err := h.Svc.BulkCandidateAction(c.Request.Context(), tenant, actorID(c), c.Param("action"), body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ImportSources(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body BulkSourceImportBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+		return
+	}
+	out, err := h.Svc.ImportSources(c.Request.Context(), tenant, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out, "count": len(out)})
+}
+
+func (h *Handler) RecalculateListingDraft(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body RecalculateListingBody
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&body); err != nil {
+			response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+			return
+		}
+	}
+	out, err := h.Svc.RecalculateListingDraft(c.Request.Context(), tenant, id, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
 }

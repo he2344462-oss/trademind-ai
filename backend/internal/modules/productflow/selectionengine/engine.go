@@ -52,6 +52,15 @@ type Input struct {
 	Pricing             pricingengine.PricingResult
 	Product             ProductData
 	MinimumSKUMarginBPS *int64
+	Market              map[string]MarketDimension
+}
+
+// MarketDimension is normalized provider evidence on a 0..100 scale.
+type MarketDimension struct {
+	Score         int64    `json:"score"`
+	ConfidenceBPS int64    `json:"confidenceBps"`
+	Freshness     string   `json:"freshness"`
+	Evidence      []string `json:"evidence"`
 }
 
 type Dimension struct {
@@ -61,14 +70,21 @@ type Dimension struct {
 	Evidence []string `json:"evidence"`
 }
 type Result struct {
-	Dimensions        map[string]Dimension `json:"dimensions"`
-	OverallScore      int64                `json:"overallScore"`
-	ConfidenceScore   int64                `json:"confidenceScore"`
-	Recommendation    string               `json:"recommendation"`
-	Reasons           []string             `json:"reasons"`
-	Warnings          []string             `json:"warnings"`
-	Blockers          []string             `json:"blockers"`
-	MissingDimensions []string             `json:"missingDimensions"`
+	Dimensions          map[string]Dimension `json:"dimensions"`
+	OverallScore        int64                `json:"overallScore"`
+	ConfidenceScore     int64                `json:"confidenceScore"`
+	Recommendation      string               `json:"recommendation"`
+	Reasons             []string             `json:"reasons"`
+	Warnings            []string             `json:"warnings"`
+	Blockers            []string             `json:"blockers"`
+	MissingDimensions   []string             `json:"missingDimensions"`
+	ConfidenceBreakdown ConfidenceBreakdown  `json:"confidenceBreakdown"`
+}
+
+type ConfidenceBreakdown struct {
+	ProductDataBPS    int64 `json:"productDataBps"`
+	CostDataBPS       int64 `json:"costDataBps"`
+	MarketCoverageBPS int64 `json:"marketCoverageBps"`
 }
 
 func ptr(v int64) *int64 { return &v }
@@ -146,8 +162,8 @@ func Score(in Input, cfg Config) Result {
 		}
 	}
 	if !in.Product.HasPurchaseCost {
-		risk -= 30
-		warnings = append(warnings, "缺少采购价")
+		risk = 0
+		blockers = append(blockers, "缺少采购价，无法可靠计算利润")
 	}
 	if in.Pricing.EstimatedProfit <= 0 {
 		risk = 0
@@ -176,8 +192,19 @@ func Score(in Input, cfg Config) Result {
 		fit += 10
 	}
 	dims["platform_fit"] = Dimension{Score: ptr(clamp(fit)), Weight: cfg.Weights["platform_fit"], Reliable: true, Evidence: []string{"仅基于客单价、图片、SKU 复杂度和利润空间，不含平台流量数据"}}
-	dims["demand"] = Dimension{Score: nil, Weight: cfg.Weights["demand"], Reliable: false, Evidence: []string{"暂无真实销量、搜索量或浏览量数据"}}
-	dims["competition"] = Dimension{Score: nil, Weight: cfg.Weights["competition"], Reliable: false, Evidence: []string{"暂无真实竞品数量、价格带或成交率数据"}}
+	missing := []string{}
+	for _, key := range []string{"demand", "competition"} {
+		market, ok := in.Market[key]
+		if !ok || market.ConfidenceBPS <= 0 {
+			dims[key] = Dimension{Score: nil, Weight: cfg.Weights[key], Reliable: false, Evidence: []string{"暂无可验证的有效市场信号"}}
+			missing = append(missing, key)
+			continue
+		}
+		score := clamp(market.Score)
+		evidence := append([]string{}, market.Evidence...)
+		evidence = append(evidence, "市场信号新鲜度："+market.Freshness)
+		dims[key] = Dimension{Score: &score, Weight: cfg.Weights[key], Reliable: true, Evidence: evidence}
+	}
 	weighted, totalWeight, knownWeight := int64(0), int64(0), int64(0)
 	for key, d := range dims {
 		totalWeight += cfg.Weights[key]
@@ -196,12 +223,22 @@ func Score(in Input, cfg Config) Result {
 			dataCoverage++
 		}
 	}
-	confidence := int64(0)
-	if totalWeight > 0 {
-		confidence = knownWeight * 70 / totalWeight
+	productConfidenceBPS := dataCoverage * 10000 / int64(len(checks))
+	costKnown := int64(0)
+	for _, ok := range []bool{in.Product.HasPurchaseCost, in.Product.HasFreight, in.Pricing.EstimatedTotalCost >= 0, in.Pricing.SuggestedSalePrice > 0} {
+		if ok {
+			costKnown++
+		}
 	}
-	confidence += dataCoverage * 30 / int64(len(checks))
-	confidence = clamp(confidence)
+	costConfidenceBPS := costKnown * 10000 / 4
+	marketConfidenceBPS := int64(0)
+	for _, key := range []string{"demand", "competition"} {
+		if item, ok := in.Market[key]; ok && item.ConfidenceBPS > 0 {
+			marketConfidenceBPS += item.ConfidenceBPS / 2
+		}
+	}
+	confidenceBPS := productConfidenceBPS*35/100 + costConfidenceBPS*45/100 + marketConfidenceBPS*20/100
+	confidence := clamp(int64(math.Round(float64(confidenceBPS) / 100)))
 	rec := RecommendationReject
 	if len(blockers) == 0 {
 		switch {
@@ -226,6 +263,8 @@ func Score(in Input, cfg Config) Result {
 	if risk >= 75 {
 		reasons = append(reasons, "暂无明显高风险因素")
 	}
-	reasons = append(reasons, "需求和竞争数据尚缺失，结论属于规则初筛而非爆品预测")
-	return Result{Dimensions: dims, OverallScore: overall, ConfidenceScore: confidence, Recommendation: rec, Reasons: reasons, Warnings: warnings, Blockers: blockers, MissingDimensions: []string{"demand", "competition"}}
+	if len(missing) > 0 {
+		reasons = append(reasons, "当前市场信号覆盖不足，结论是规则初筛，不代表市场爆款概率")
+	}
+	return Result{Dimensions: dims, OverallScore: overall, ConfidenceScore: confidence, Recommendation: rec, Reasons: reasons, Warnings: warnings, Blockers: blockers, MissingDimensions: missing, ConfidenceBreakdown: ConfidenceBreakdown{ProductDataBPS: productConfidenceBPS, CostDataBPS: costConfidenceBPS, MarketCoverageBPS: marketConfidenceBPS}}
 }

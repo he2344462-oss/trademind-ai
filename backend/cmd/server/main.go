@@ -32,6 +32,7 @@ import (
 	"github.com/trademind-ai/trademind/backend/internal/modules/observabilitymod"
 	"github.com/trademind-ai/trademind/backend/internal/modules/operationlog"
 	"github.com/trademind-ai/trademind/backend/internal/modules/ordersync"
+	"github.com/trademind-ai/trademind/backend/internal/modules/productflow"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productpublish"
 	"github.com/trademind-ai/trademind/backend/internal/modules/securitymod"
 	"github.com/trademind-ai/trademind/backend/internal/modules/settings"
@@ -379,6 +380,12 @@ func main() {
 		}
 	} else if cfg.CollectQueueEnabled && redisClient == nil {
 		log.Warn("collect_worker_skipped", "reason", "redis unavailable while COLLECT_QUEUE_ENABLED=true")
+	}
+	if cfg.CandidateAnalysisQueueEnabled && redisClient != nil && collectSvc != nil && collectSvc.ProductFlow != nil {
+		productflow.StartAnalysisWorker(workerCtx, &workerWG, log, collectSvc.ProductFlow, workerReg)
+		log.Info("candidate_analysis_worker_started", "concurrency", cfg.CandidateAnalysisConcurrency, "queue", cfg.CandidateAnalysisQueueName)
+	} else if cfg.CandidateAnalysisQueueEnabled && redisClient == nil {
+		log.Warn("candidate_analysis_worker_skipped", "reason", "redis unavailable while CANDIDATE_ANALYSIS_QUEUE_ENABLED=true")
 	}
 
 	if cfg.ImageQueueEnabled && redisClient != nil && imageTaskSvc != nil {

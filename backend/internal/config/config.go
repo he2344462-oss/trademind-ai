@@ -55,6 +55,12 @@ type Config struct {
 	// CollectBatchMaxURLs limits URLs per POST /collect/batches (default 50).
 	CollectBatchMaxURLs int
 
+	CandidateAnalysisQueueEnabled bool
+	CandidateAnalysisQueueName    string
+	CandidateAnalysisConcurrency  int
+	CandidateAnalysisMaxRetries   int
+	AIExplanationTopN             int
+
 	// 1688 bulk collect throttling (conservative defaults; settings.collector can override).
 	CollectBatchConcurrency1688 int
 	CollectBatchDelayMinMs1688  int
@@ -245,7 +251,12 @@ func Load() (*Config, error) {
 			os.Getenv("COLLECT_QUEUE_NAME"),
 			"collect:tasks",
 		)),
-		CollectBatchMaxURLs: atoiOrDefault(os.Getenv("COLLECT_BATCH_MAX_URLS"), 50),
+		CollectBatchMaxURLs:           atoiOrDefault(os.Getenv("COLLECT_BATCH_MAX_URLS"), 50),
+		CandidateAnalysisQueueEnabled: envBool(os.Getenv("CANDIDATE_ANALYSIS_QUEUE_ENABLED"), true),
+		CandidateAnalysisQueueName:    strings.TrimSpace(firstNonEmpty(os.Getenv("CANDIDATE_ANALYSIS_QUEUE_NAME"), "candidate:analysis:batches")),
+		CandidateAnalysisConcurrency:  atoiOrDefault(os.Getenv("CANDIDATE_ANALYSIS_CONCURRENCY"), 4),
+		CandidateAnalysisMaxRetries:   atoiOrDefault(os.Getenv("CANDIDATE_ANALYSIS_MAX_RETRIES"), 2),
+		AIExplanationTopN:             atoiOrDefault(os.Getenv("AI_EXPLANATION_TOP_N"), 20),
 
 		CollectBatchConcurrency1688: atoiOrDefault(os.Getenv("COLLECT_BATCH_CONCURRENCY_1688"), 1),
 		CollectBatchDelayMinMs1688:  atoiOrDefault(os.Getenv("COLLECT_BATCH_DELAY_MIN_MS_1688"), 1500),

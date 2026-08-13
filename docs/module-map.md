@@ -67,3 +67,6 @@ Changes to `.env.example`, `deploy/preproduction/**`, or `deploy/scripts/*prepro
 ## P10 Credential / Read-only / Control Modules
 
 Changes under `backend/internal/modules/credentialp10`, `inventoryreadp10`, or `productioncontrolp10` must be checked with backend routing, migration, `adminperm`, metrics/redaction, config validation, Admin `/ops/p10-readiness`, `admin/src/services/p10Readiness.ts`, API/provider/security docs, environment templates, CI regression, and `P10_MANUAL_ACCEPTANCE_CHECKLIST.md`. `inventoryreadp10` may depend on exported inventory Provider/calibration/audit contracts. No production code may expose `sku.syncStock`, a Worker, scheduler, queue consumer, or automatic business retry without separate approval.
+# Sprint 3 模块补充
+
+批量选品继续归属 `backend/internal/modules/productflow`：`batch_analysis.go` 负责 Redis 批次与幂等领取，`rankingengine` 负责可解释排序，`market_signal.go` 保存带来源和新鲜度的信号，`pricing_profile.go` 负责数据库费用模型。Admin 对应 `Commerce/Candidates`、`Commerce/Recommendations` 与 `Settings/PricingProfiles`。

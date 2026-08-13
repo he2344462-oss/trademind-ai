@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/trademind-ai/trademind/backend/internal/modules/product"
 	"gorm.io/gorm"
@@ -15,7 +17,7 @@ func newTestService(t *testing.T) *Service {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &ListingDraft{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
+	require.NoError(t, db.AutoMigrate(&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &ListingDraft{}, &PricingProfile{}, &MarketSignalSnapshot{}, &CandidateAnalysisBatch{}, &CandidateAnalysisBatchItem{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
 	return &Service{DB: db}
 }
 
@@ -83,6 +85,101 @@ func TestListingProfilesProduceDifferentPricing(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, changed, *updated.SalePrice)
 	require.NotEqual(t, *taobao.EstimatedProfit, *updated.EstimatedProfit)
+}
+
+func TestPricingProfileSnapshotAndManualRecalculation(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	enabled := true
+	profile, err := svc.CreatePricingProfile(ctx, 0, PricingProfileInput{Name: "闲鱼测试费用", Platform: "xianyu", Currency: "CNY", PlatformFeeBPS: 200, PlatformFeeFixed: "0.50", Enabled: &enabled, IsDefault: true})
+	require.NoError(t, err)
+	source, err := svc.CreateSource(ctx, 0, testSourceBody("profile-history"))
+	require.NoError(t, err)
+	candidate, _, err := svc.CreateCandidate(ctx, 0, source.ID)
+	require.NoError(t, err)
+	_, err = svc.AnalyzeCandidate(ctx, 0, candidate.ID, AnalyzeCandidateBody{PricingProfileID: &profile.ID})
+	require.NoError(t, err)
+	approved, err := svc.ApproveCandidate(ctx, 0, candidate.ID)
+	require.NoError(t, err)
+	catalog := approved.Catalog.(product.Product)
+	draft, _, err := svc.CreateListingDraft(ctx, 0, catalog.ID, CreateListingDraftBody{Platform: "xianyu", PricingProfileID: &profile.ID})
+	require.NoError(t, err)
+	original := append([]byte(nil), draft.PricingSnapshot...)
+	profile.PlatformFeeBPS = 900
+	require.NoError(t, svc.DB.Save(profile).Error)
+	unchanged, err := svc.GetListingDraft(ctx, 0, draft.ID)
+	require.NoError(t, err)
+	require.JSONEq(t, string(original), string(unchanged.PricingSnapshot))
+	recalculated, err := svc.RecalculateListingDraft(ctx, 0, draft.ID, RecalculateListingBody{PricingProfileID: &profile.ID})
+	require.NoError(t, err)
+	require.Equal(t, 2, recalculated.PricingVersion)
+	require.NotEqual(t, string(original), string(recalculated.PricingSnapshot))
+}
+
+func TestMarketSignalFreshnessFeedsDemandWithoutPretendingLiveData(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	source, err := svc.CreateSource(ctx, 0, testSourceBody("market-signal"))
+	require.NoError(t, err)
+	candidate, _, err := svc.CreateCandidate(ctx, 0, source.ID)
+	require.NoError(t, err)
+	_, err = svc.CreateMarketSignal(ctx, 0, candidate.ID, CreateMarketSignalBody{Platform: "xianyu", SignalType: SignalDemandScore, Value: 80, Source: "人工调研表", Origin: SignalOriginManual, ConfidenceBPS: 7000})
+	require.NoError(t, err)
+	out, err := svc.AnalyzeCandidate(ctx, 0, candidate.ID, AnalyzeCandidateBody{})
+	require.NoError(t, err)
+	require.NotNil(t, out.Score.Dimensions["demand"].Score)
+	require.Contains(t, out.Score.MissingDimensions, "competition")
+	require.NotEmpty(t, out.Analysis.MarketSignalSnapshot)
+}
+
+func TestRankingEngineAndBlockerBulkApproval(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	sourceBody := testSourceBody("blocked-approval")
+	sourceBody.SourcePrice = nil
+	source, err := svc.CreateSource(ctx, 0, sourceBody)
+	require.NoError(t, err)
+	candidate, _, err := svc.CreateCandidate(ctx, 0, source.ID)
+	require.NoError(t, err)
+	out, err := svc.AnalyzeCandidate(ctx, 0, candidate.ID, AnalyzeCandidateBody{})
+	require.NoError(t, err)
+	require.NotEmpty(t, out.Score.Blockers)
+	result, err := svc.BulkCandidateAction(ctx, 0, nil, "approve", BulkCandidateActionBody{CandidateIDs: []uuid.UUID{candidate.ID}, Source: "batch_recommendation"})
+	require.NoError(t, err)
+	require.Empty(t, result.Completed)
+	require.Contains(t, result.Failed, candidate.ID.String())
+}
+
+func TestBatchFailureIsolationAndRetryExhaustion(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	batch := CandidateAnalysisBatch{TenantID: 0, Status: BatchStatusPending, Total: 1, Pending: 1, AnalysisMode: "rules_only", Platform: "xianyu", TopN: 20, ExcludeBlocked: true}
+	require.NoError(t, svc.DB.Create(&batch).Error)
+	missing := uuid.New()
+	item := CandidateAnalysisBatchItem{TenantID: 0, BatchID: batch.ID, CandidateID: missing, Status: BatchItemStatusPending, MaxAttempts: 2}
+	require.NoError(t, svc.DB.Create(&item).Error)
+	svc.RunAnalysisBatch(ctx, batch.ID, "test-worker")
+	detail, err := svc.GetAnalysisBatch(ctx, 0, batch.ID, true)
+	require.NoError(t, err)
+	require.Equal(t, BatchStatusFailed, detail.Status)
+	require.Equal(t, 1, detail.Failed)
+	require.Equal(t, 2, detail.Items[0].Attempts)
+	require.Equal(t, BatchItemStatusFailed, detail.Items[0].Status)
+}
+
+func TestRecoverStaleAnalysisItem(t *testing.T) {
+	svc := newTestService(t)
+	now := time.Now().UTC().Add(-20 * time.Minute)
+	batch := CandidateAnalysisBatch{TenantID: 0, Status: BatchStatusRunning, Total: 1, Processing: 1, AnalysisMode: "rules_only", Platform: "xianyu", TopN: 20}
+	require.NoError(t, svc.DB.Create(&batch).Error)
+	item := CandidateAnalysisBatchItem{TenantID: 0, BatchID: batch.ID, CandidateID: uuid.New(), Status: BatchItemStatusProcessing, Attempts: 1, MaxAttempts: 3, StartedAt: &now}
+	require.NoError(t, svc.DB.Create(&item).Error)
+	require.NoError(t, svc.RecoverStaleAnalysisItems(context.Background(), time.Now().UTC().Add(-10*time.Minute)))
+	detail, err := svc.GetAnalysisBatch(context.Background(), 0, batch.ID, true)
+	require.NoError(t, err)
+	require.Equal(t, 1, detail.Pending)
+	require.Zero(t, detail.Processing)
+	require.Equal(t, BatchItemStatusPending, detail.Items[0].Status)
 }
 
 func testSourceBody(id string) CreateSourceProductBody {

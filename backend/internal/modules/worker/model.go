@@ -23,6 +23,7 @@ const (
 	TypeFileSecurityScan        = "file_security_scan"
 	TypeExport                  = "export"
 	TypeAuditChainVerify        = "audit_chain_verify"
+	TypeCandidateAnalysis       = "candidate_analysis"
 	StatusRunning               = "running"
 	StatusStale                 = "stale"
 	StatusStopped               = "stopped"

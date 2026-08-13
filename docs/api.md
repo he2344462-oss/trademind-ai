@@ -532,6 +532,22 @@ Current code-level P7 endpoints affected: product and order list APIs reject exc
 - 前端：`admin/src/services`、`admin/src/types`、相关页面字段和状态映射一起检查。
 ## Sprint 2 成本利润与选品分析
 
+## Sprint 3 批量自动选品与市场信号
+
+批量分析请求只创建任务，实际工作由 Redis Worker 完成。市场信号必须保存来源与 `manual`/`fixture` 标识；过期信号不参与评分，陈旧信号降低可信度。费用模型是用户估算，不是平台官方实时费率。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/source-products/import` | 一次导入最多 500 个 JSON 货源商品 |
+| `POST` | `/api/v1/candidates/analyze-batch` | 按 ID 或筛选条件创建异步分析批次，返回 `batchJobId` |
+| `GET` | `/api/v1/candidate-analysis-batches/:id` | 查询成功、失败、待处理和处理中数量 |
+| `GET` | `/api/v1/candidate-analysis-batches/:id/top` | 获取确定性 `rankingScore` 排序的 TOP N |
+| `POST` | `/api/v1/candidates/bulk/:action` | 批量 `watch`、`reject`、`approve`；blocker 默认禁止批准 |
+| `POST/GET` | `/api/v1/candidates/:id/market-signals` | 写入或查询带来源、新鲜度的市场信号快照 |
+| `GET/POST` | `/api/v1/pricing-profiles` | 查询或创建费用模型 |
+| `PUT/DELETE` | `/api/v1/pricing-profiles/:id` | 更新或删除未被草稿引用的费用模型 |
+| `POST` | `/api/v1/listing-drafts/:id/recalculate` | 显式按指定费用模型重算并增加快照版本 |
+
 金额输入使用两位小数字符串（如 `"12.80"`），金额输出同样是字符串；费率和利润率使用 basis points（`4000 = 40%`）。默认平台费用全部为 0 且 `configured=false`，不代表平台官方费率。
 
 | 方法 | 路径 | 说明 |

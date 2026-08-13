@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/trademind-ai/trademind/backend/internal/modules/operationlog"
 	"github.com/trademind-ai/trademind/backend/internal/modules/product"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/pricingengine"
+	"github.com/trademind-ai/trademind/backend/internal/rdb"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -27,8 +29,16 @@ var (
 )
 
 type Service struct {
-	DB        *gorm.DB
-	AIExplain func(context.Context, string) (string, error)
+	DB                   *gorm.DB
+	AIExplain            func(context.Context, string) (string, error)
+	Redis                *rdb.Client
+	OpLog                *operationlog.Service
+	AnalysisQueueEnabled bool
+	AnalysisQueueName    string
+	AnalysisConcurrency  int
+	AnalysisMaxRetries   int
+	AIExplanationTopN    int
+	MarketSignals        MarketSignalProvider
 }
 
 type CollectedSourceInput struct {
@@ -313,6 +323,37 @@ func (s *Service) CostCenter(ctx context.Context, tenantID int64) (*CostCenterSu
 	return out, nil
 }
 
+func (s *Service) SelectionDashboard(ctx context.Context, tenantID int64) (*SelectionDashboard, error) {
+	out := &SelectionDashboard{RunningBatches: []CandidateAnalysisBatch{}}
+	start := time.Now().UTC().Truncate(24 * time.Hour)
+	db := s.DB.WithContext(ctx)
+	if err := db.Model(&SourceProduct{}).Where("tenant_id = ? AND created_at >= ?", tenantID, start).Count(&out.TodaySources).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&Candidate{}).Where("tenant_id = ? AND status = ?", tenantID, CandidateStatusPending).Count(&out.PendingCandidates).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&Candidate{}).Where("tenant_id = ? AND analyzed_at >= ?", tenantID, start).Count(&out.TodayAnalyzed).Error; err != nil {
+		return nil, err
+	}
+	for recommendation, target := range map[string]*int64{"strong_recommend": &out.StrongRecommend, "recommend": &out.Recommend, "watch": &out.Watch, "reject": &out.Reject} {
+		if err := db.Model(&Candidate{}).Where("tenant_id = ? AND recommendation = ?", tenantID, recommendation).Count(target).Error; err != nil {
+			return nil, err
+		}
+	}
+	var average *float64
+	if err := db.Model(&Candidate{}).Where("tenant_id = ? AND estimated_margin IS NOT NULL", tenantID).Select("AVG(estimated_margin)").Scan(&average).Error; err != nil {
+		return nil, err
+	}
+	if average != nil {
+		out.AverageMarginBPS = int64(math.Round(*average * 10000))
+	}
+	if err := db.Where("tenant_id = ? AND status IN ?", tenantID, []string{BatchStatusPending, BatchStatusRunning}).Order("created_at DESC").Limit(5).Find(&out.RunningBatches).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *Service) GetCandidate(ctx context.Context, tenantID int64, id uuid.UUID) (*Candidate, error) {
 	var row Candidate
 	err := s.DB.WithContext(ctx).Where("candidates.tenant_id = ? AND candidates.id = ?", tenantID, id).First(&row).Error
@@ -574,7 +615,7 @@ func (s *Service) CreateListingDraft(ctx context.Context, tenantID int64, catalo
 	if body.PricingProfile != nil {
 		profileBody = *body.PricingProfile
 	}
-	profile, profileErr := profileFromBody(platform, profileBody)
+	profile, profileID, profileErr := s.resolvePricingProfile(ctx, tenantID, platform, body.PricingProfileID, profileBody)
 	if profileErr != nil {
 		return nil, false, fmt.Errorf("%w: %v", ErrValidation, profileErr)
 	}
@@ -587,7 +628,7 @@ func (s *Service) CreateListingDraft(ctx context.Context, tenantID int64, catalo
 		return nil, false, pricingErr
 	}
 	pricingJSON, _ := json.Marshal(pricing)
-	row := ListingDraft{TenantID: tenantID, CatalogProductID: catalog.ID, Platform: platform, ShopID: body.ShopID, Title: catalog.Title, Description: catalog.Description, Images: imageJSON, SalePrice: moneyFloat(pricing.SuggestedSalePrice), EstimatedProfit: moneyFloat(pricing.EstimatedProfit), EstimatedMargin: bpsFloat(pricing.EstimatedMarginBPS), PricingSnapshot: pricingJSON, PlatformCategory: catalog.Category, PlatformSKUData: skuJSON, PublishStatus: ListingStatusDraft}
+	row := ListingDraft{TenantID: tenantID, CatalogProductID: catalog.ID, Platform: platform, ShopID: body.ShopID, Title: catalog.Title, Description: catalog.Description, Images: imageJSON, SalePrice: moneyFloat(pricing.SuggestedSalePrice), EstimatedProfit: moneyFloat(pricing.EstimatedProfit), EstimatedMargin: bpsFloat(pricing.EstimatedMarginBPS), PricingSnapshot: pricingJSON, PricingProfileID: profileID, PricingVersion: 1, PlatformCategory: catalog.Category, PlatformSKUData: skuJSON, PublishStatus: ListingStatusDraft}
 	err = s.DB.WithContext(ctx).Create(&row).Error
 	created := err == nil
 	if err != nil && isUniqueError(err) {
@@ -756,6 +797,42 @@ func (s *Service) DeleteListingDraft(ctx context.Context, tenantID int64, id uui
 		return ErrInvalidTransition
 	}
 	return s.DB.WithContext(ctx).Delete(row).Error
+}
+
+func (s *Service) RecalculateListingDraft(ctx context.Context, tenantID int64, id uuid.UUID, body RecalculateListingBody) (*ListingDraft, error) {
+	row, err := s.GetListingDraft(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if row.PublishStatus == ListingStatusPublishing || row.PublishStatus == ListingStatusPublished || row.PublishStatus == ListingStatusOffline {
+		return nil, ErrInvalidTransition
+	}
+	profileID := body.PricingProfileID
+	if profileID == nil {
+		profileID = row.PricingProfileID
+	}
+	profile, resolvedID, err := s.resolvePricingProfile(ctx, tenantID, row.Platform, profileID, PricingProfileBody{})
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := s.GetCatalog(ctx, tenantID, row.CatalogProductID)
+	if err != nil {
+		return nil, err
+	}
+	purchase, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.PurchaseCost)
+	freight, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.FreightCost)
+	packaging, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.PackagingCost)
+	other, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.OtherCost)
+	result, err := pricingengine.Calculate(pricingengine.CostInput{Currency: "CNY", PurchaseCost: purchase, FreightCost: freight, PackagingCost: packaging, OtherCost: other, TargetProfit: 1000, TargetMarginBPS: 4000, MinimumProfit: 500, MinimumMarginBPS: 2000, Profile: profile})
+	if err != nil {
+		return nil, err
+	}
+	snapshot, _ := json.Marshal(result)
+	err = s.DB.WithContext(ctx).Model(row).Updates(map[string]any{"pricing_profile_id": resolvedID, "pricing_snapshot": snapshot, "pricing_version": gorm.Expr("pricing_version + 1"), "sale_price": moneyFloat(result.SuggestedSalePrice), "estimated_profit": moneyFloat(result.EstimatedProfit), "estimated_margin": bpsFloat(result.EstimatedMarginBPS)}).Error
+	if err != nil {
+		return nil, err
+	}
+	return s.GetListingDraft(ctx, tenantID, id)
 }
 
 func isUniqueError(err error) bool {
