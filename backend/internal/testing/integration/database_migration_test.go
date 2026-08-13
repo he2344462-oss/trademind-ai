@@ -22,7 +22,10 @@ func TestAutoMigrateAgainstIsolatedPostgres(t *testing.T) {
 
 	require.NoError(t, database.AutoMigrate(db))
 
-	for _, table := range []string{"admin_users", "products", "product_skus", "product_publish_tasks", "inventory_sync_tasks"} {
+	for _, table := range []string{"admin_users", "products", "product_skus", "source_products", "candidates", "listing_drafts", "product_publish_tasks", "inventory_sync_tasks"} {
 		require.Truef(t, db.Migrator().HasTable(table), "expected migrated table %s", table)
+	}
+	for _, column := range []string{"source_product_id", "candidate_id", "catalog_status", "purchase_cost", "sale_price"} {
+		require.Truef(t, db.Migrator().HasColumn("products", column), "expected products.%s", column)
 	}
 }

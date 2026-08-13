@@ -12,6 +12,28 @@
 - 敏感信息：接口不得返回完整 API Key、Token、Secret、Cookie 或密码
 - P7-C3 cursor 列表：Product、Order、Inventory Center、Task Center、Webhook Event、Operation Log 支持 `cursor` + `limit`，响应额外返回 `items`、`nextCursor`、`hasMore`、`limit`；旧 `page` / `pageSize` / `list` / `pagination` 兼容保留。超过深 offset 返回 `pagination_offset_too_deep`；cursor 篡改、跨租户/店铺或筛选变化分别返回 `pagination_cursor_signature_invalid`、`pagination_cursor_scope_mismatch`、`pagination_cursor_filter_mismatch`。P7-C4 隔离 Medium PostgreSQL 六类分页 runtime、Query Plan、N+1、Provider 限流、Permission Cache 失效与 Linux Race 证据已关闭；Load/Soak/Regression 仍 pending P7-V2。
 
+## 商品经营四层模型（Sprint 1）
+
+以下接口均位于 `/api/v1`、需要管理端鉴权，并按当前 tenant 上下文隔离。Sprint 1 仅生成平台草稿，任何接口都不会调用闲鱼或淘宝发布能力。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` / `POST` | `/source-products` | 货源列表；创建或导入测试货源。 |
+| `GET` | `/source-products/:id` | 货源详情。 |
+| `POST` | `/source-products/:id/candidate` | 幂等加入候选池，返回 `candidate` 与 `created`。 |
+| `GET` | `/candidates` | 候选列表，支持 `status`、`keyword` 和分页。 |
+| `GET` | `/candidates/:id` | 候选详情及关联货源。 |
+| `POST` | `/candidates/:id/approve` | 人工批准并事务性生成 Catalog Product；重复批准返回同一商品。 |
+| `POST` | `/candidates/:id/watch` | 转为观察状态。 |
+| `POST` | `/candidates/:id/reject` | 淘汰候选；可提交 `rejectionReason`。 |
+| `GET` | `/catalog-products` | 正式商品库列表；底层兼容复用 `products`。 |
+| `GET` | `/catalog-products/:id` | 正式商品详情，包含旧商品图片与 SKU。 |
+| `POST` | `/catalog-products/:id/listing-drafts` | 为 `xianyu` 或 `taobao` 创建平台草稿；同商品同平台幂等。 |
+| `GET` | `/listing-drafts` | 平台草稿列表，支持平台、状态、商品与分页筛选。 |
+| `GET` / `PUT` / `DELETE` | `/listing-drafts/:id` | 查询、编辑、删除尚未发布的草稿。发布中、已发布、已下线草稿禁止编辑或删除。 |
+
+Candidate 的 Sprint 1 人工状态包括 `pending`、`analyzing`、`recommended`、`watch`、`rejected`、`approved`。Listing Draft 预留 `draft`、`ready`、`publishing`、`published`、`failed`、`offline`，但本阶段只允许人工编辑态在 `draft` 与 `ready` 间切换。
+
 ## Webhook 入站（公开，无 JWT）
 
 | 方法 | 路径 | 说明 |

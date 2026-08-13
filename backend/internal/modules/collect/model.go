@@ -49,27 +49,28 @@ func (CollectBatch) TableName() string { return "collect_batches" }
 // CollectTask persists orchestration state; collector never writes this table.
 type CollectTask struct {
 	model.HardDeleteBase
-	TenantID        int64          `gorm:"not null;default:0;index" json:"tenantId"`
-	BatchID         *uuid.UUID     `gorm:"type:char(36);index" json:"batchId,omitempty"`
-	Source          string         `gorm:"size:64;index;not null" json:"source"`
-	SourceURL       string         `gorm:"size:2048;not null" json:"sourceUrl"`
-	Status          string         `gorm:"size:32;index;not null" json:"status"`
-	ResultProductID *uuid.UUID     `gorm:"type:char(36);index" json:"resultProductId,omitempty"`
-	RawResult       datatypes.JSON `gorm:"type:jsonb" json:"rawResult,omitempty"`
-	ErrorMessage    string         `gorm:"type:text" json:"errorMessage,omitempty"`
-	RetryCount      int            `gorm:"not null;default:0" json:"retryCount"`
-	MaxRetries      int            `gorm:"not null;default:3" json:"maxRetries"`
-	RequestOptions  datatypes.JSON `gorm:"type:jsonb" json:"requestOptions,omitempty"`
-	NextRetryAt     *time.Time     `json:"nextRetryAt,omitempty"`
-	RetryEnqueuedAt *time.Time     `json:"retryEnqueuedAt,omitempty"`
-	CreatedBy       *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
-	StartedAt       *time.Time     `json:"startedAt,omitempty"`
-	FinishedAt      *time.Time     `json:"finishedAt,omitempty"`
-	LockedBy        *string        `gorm:"size:220;index" json:"lockedBy,omitempty"`
-	LockedUntil     *time.Time     `gorm:"index" json:"lockedUntil,omitempty"`
-	LockVersion     int            `gorm:"default:0;not null" json:"lockVersion"`
-	HeartbeatAt     *time.Time     `gorm:"index" json:"heartbeatAt,omitempty"`
-	ExecutionID     *string        `gorm:"size:36;index" json:"executionId,omitempty"`
+	TenantID              int64          `gorm:"not null;default:0;index" json:"tenantId"`
+	BatchID               *uuid.UUID     `gorm:"type:char(36);index" json:"batchId,omitempty"`
+	Source                string         `gorm:"size:64;index;not null" json:"source"`
+	SourceURL             string         `gorm:"size:2048;not null" json:"sourceUrl"`
+	Status                string         `gorm:"size:32;index;not null" json:"status"`
+	ResultProductID       *uuid.UUID     `gorm:"type:char(36);index" json:"resultProductId,omitempty"`
+	ResultSourceProductID *uuid.UUID     `gorm:"type:char(36);index" json:"resultSourceProductId,omitempty"`
+	RawResult             datatypes.JSON `gorm:"type:jsonb" json:"rawResult,omitempty"`
+	ErrorMessage          string         `gorm:"type:text" json:"errorMessage,omitempty"`
+	RetryCount            int            `gorm:"not null;default:0" json:"retryCount"`
+	MaxRetries            int            `gorm:"not null;default:3" json:"maxRetries"`
+	RequestOptions        datatypes.JSON `gorm:"type:jsonb" json:"requestOptions,omitempty"`
+	NextRetryAt           *time.Time     `json:"nextRetryAt,omitempty"`
+	RetryEnqueuedAt       *time.Time     `json:"retryEnqueuedAt,omitempty"`
+	CreatedBy             *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
+	StartedAt             *time.Time     `json:"startedAt,omitempty"`
+	FinishedAt            *time.Time     `json:"finishedAt,omitempty"`
+	LockedBy              *string        `gorm:"size:220;index" json:"lockedBy,omitempty"`
+	LockedUntil           *time.Time     `gorm:"index" json:"lockedUntil,omitempty"`
+	LockVersion           int            `gorm:"default:0;not null" json:"lockVersion"`
+	HeartbeatAt           *time.Time     `gorm:"index" json:"heartbeatAt,omitempty"`
+	ExecutionID           *string        `gorm:"size:36;index" json:"executionId,omitempty"`
 }
 
 func (CollectTask) TableName() string { return "collect_tasks" }

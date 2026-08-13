@@ -18,6 +18,7 @@ import (
 	"github.com/trademind-ai/trademind/backend/internal/modules/collectrule"
 	"github.com/trademind-ai/trademind/backend/internal/modules/operationlog"
 	"github.com/trademind-ai/trademind/backend/internal/modules/product"
+	"github.com/trademind-ai/trademind/backend/internal/modules/productflow"
 	"github.com/trademind-ai/trademind/backend/internal/modules/settings"
 	"github.com/trademind-ai/trademind/backend/internal/pkg/ctxkey"
 	"github.com/trademind-ai/trademind/backend/internal/pkg/tasklease"
@@ -28,6 +29,7 @@ import (
 type Service struct {
 	DB                      *gorm.DB
 	Products                *product.Service
+	ProductFlow             *productflow.Service
 	Rules                   *collectrule.Service
 	Profiles                *collectbrowserprofile.Service
 	OpLog                   *operationlog.Service
@@ -125,6 +127,24 @@ func (n *normalizedProduct) importParams(fullJSON json.RawMessage) product.Impor
 		SKUs:               skus,
 		FullNormalizedJSON: fullJSON,
 	}
+}
+
+func lowestImportCost(skus []product.ImportSKUParams) *float64 {
+	var lowest *float64
+	for _, sku := range skus {
+		value := sku.CostPrice
+		if value == nil {
+			value = sku.Price
+		}
+		if value == nil || *value < 0 {
+			continue
+		}
+		if lowest == nil || *value < *lowest {
+			copyValue := *value
+			lowest = &copyValue
+		}
+	}
+	return lowest
 }
 
 func (s *Service) failTask(ctx context.Context, task *CollectTask, fromStatus, msg string, payload map[string]any, workerID string, claim *tasklease.ClaimResult) {
@@ -416,6 +436,22 @@ func (s *Service) RunCollectJob(parent context.Context, taskID uuid.UUID, worker
 	if isTaobaoTmallCollectSource(task.Source) {
 		params, outcome.ProductJSON = normalizeTaobaoTmallImport(task.Source, norm, outcome.ProductJSON)
 	}
+	var sourceProductID *uuid.UUID
+	if s.ProductFlow != nil {
+		images := append([]string(nil), params.MainImages...)
+		images = append(images, params.DescriptionImages...)
+		sourcePrice := lowestImportCost(params.SKUs)
+		source, sourceErr := s.ProductFlow.UpsertCollectedSource(ctx, productflow.CollectedSourceInput{
+			TenantID: task.TenantID, SourcePlatform: task.Source, SourceURL: params.SourceURL,
+			Title: params.Title, Description: params.Description, Images: images, SKUs: params.SKUs,
+			RawData: outcome.ProductJSON, SourcePrice: sourcePrice,
+		})
+		if sourceErr != nil {
+			s.handleCollectJobError(ctx, task, fmt.Errorf("persist source product: %w", sourceErr), workerID, claim)
+			return
+		}
+		sourceProductID = &source.ID
+	}
 	created, err := s.Products.ImportDraftWithContext(ctx, task.CreatedBy, params)
 	if err != nil {
 		s.handleCollectJobError(ctx, task, err, workerID, claim)
@@ -426,14 +462,15 @@ func (s *Service) RunCollectJob(parent context.Context, taskID uuid.UUID, worker
 	rawJSON := datatypes.JSON(outcome.ProductJSON)
 	pid := created.ID
 	if err := s.finishCollectTask(ctx, taskID, workerID, claim, map[string]interface{}{
-		"status":            StatusSuccess,
-		"result_product_id": pid,
-		"raw_result":        rawJSON,
-		"error_message":     "",
-		"finished_at":       &fin,
-		"next_retry_at":     nil,
-		"retry_enqueued_at": nil,
-		"retry_count":       0,
+		"status":                   StatusSuccess,
+		"result_product_id":        pid,
+		"result_source_product_id": sourceProductID,
+		"raw_result":               rawJSON,
+		"error_message":            "",
+		"finished_at":              &fin,
+		"next_retry_at":            nil,
+		"retry_enqueued_at":        nil,
+		"retry_count":              0,
 	}); err != nil {
 		slog.Warn("collect_success_lease_lost", "taskId", taskID.String(), "error", err.Error())
 		return
@@ -451,7 +488,7 @@ func (s *Service) RunCollectJob(parent context.Context, taskID uuid.UUID, worker
 		Message:    "draft imported from collector response",
 		RetryCount: refreshed.RetryCount,
 		MaxRetries: refreshed.MaxRetries,
-		PayloadMap: map[string]any{"productId": pid.String()},
+		PayloadMap: map[string]any{"productId": pid.String(), "sourceProductId": sourceProductID},
 	})
 
 	if s.OpLog != nil {

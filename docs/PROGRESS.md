@@ -1,8 +1,10 @@
 # TradeMind 当前维护状态
 
-更新时间：2026-08-12
+更新时间：2026-08-13
 
-2026-08-12 完成运行基线与 Collector 安全加固：统一 Node.js 24 LTS、pnpm 9.15.4、Go 1.25.x 的文档、CI 与 Docker 约定；Compose PostgreSQL 与后端复用同一组 `DB_*` 凭据；本地基础设施和 Collector 发布端口仅绑定回环地址；Backend→Collector `/v1/*` 使用至少 32 字符的内部 Token 鉴权，并限制 Collector JSON 请求体大小。未开始 Tenant、计费、套餐或商品模型重构。
+2026-08-13 进入 Sprint 1 商品业务模型重构：新增 `source_products`、`candidates`、`listing_drafts`，并以兼容字段将旧 `products` 定义为 Catalog Product 实现基础。Collector 成功结果先幂等写入货源池，再保留旧商品草稿写入与 `result_product_id`；新 API 和 Admin 页面支持人工完成货源 → 候选 → 批准 → 商品库 → 闲鱼/淘宝草稿闭环。本阶段没有启用 AI 自动决策或任何真实平台发布。
+
+2026-08-12 完成运行基线与 Collector 安全加固：统一 Node.js 24 LTS、pnpm 9.15.4、Go 1.25.x 的文档、CI 与 Docker 约定；Compose PostgreSQL 与后端复用同一组 `DB_*` 凭据；本地基础设施和 Collector 发布端口仅绑定回环地址；Backend→Collector `/v1/*` 使用至少 32 字符的内部 Token 鉴权，并限制 Collector JSON 请求体大小。
 
 ## 生命周期
 

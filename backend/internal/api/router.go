@@ -51,6 +51,7 @@ import (
 	"github.com/trademind-ai/trademind/backend/internal/modules/pricing"
 	"github.com/trademind-ai/trademind/backend/internal/modules/product"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productcheck"
+	"github.com/trademind-ai/trademind/backend/internal/modules/productflow"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productpublish"
 	"github.com/trademind-ai/trademind/backend/internal/modules/release"
 	"github.com/trademind-ai/trademind/backend/internal/modules/restore"
@@ -297,6 +298,8 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 		Idempotency: idempotencySvc,
 	}
 	productH := &product.Handler{Svc: productSvc, Files: fileSvc}
+	productFlowSvc := &productflow.Service{DB: dep.DB}
+	productFlowH := &productflow.Handler{Svc: productFlowSvc}
 
 	aiBatchSvc := &aioperationbatch.Service{
 		DB:       dep.DB,
@@ -332,13 +335,14 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 	aiTaskH := &aitask.Handler{Svc: aiTaskSvc}
 
 	collectSvc := &collect.Service{
-		DB:       dep.DB,
-		Products: productSvc,
-		Rules:    collectRuleSvc,
-		Profiles: profileSvc,
-		OpLog:    opLogSvc,
-		Client:   collectorClient,
-		Redis:    dep.Redis,
+		DB:          dep.DB,
+		Products:    productSvc,
+		ProductFlow: productFlowSvc,
+		Rules:       collectRuleSvc,
+		Profiles:    profileSvc,
+		OpLog:       opLogSvc,
+		Client:      collectorClient,
+		Redis:       dep.Redis,
 	}
 	if dep.Config != nil {
 		collectSvc.QueueName = dep.Config.CollectQueueName
@@ -600,6 +604,7 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 	aitask.Register(authed, aiTaskH)
 	imagetask.Register(authed, imageTaskH)
 	product.Register(authed, productH)
+	productflow.Register(authed, productFlowH)
 	aiproducttext.Register(authed, aiProductTextH)
 	aiproductimage.Register(authed, aiProductImageH)
 	pricingSvc := &pricing.Service{DB: dep.DB, Settings: settingsSvc, OpLog: opLogSvc}

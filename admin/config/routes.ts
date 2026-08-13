@@ -31,6 +31,30 @@ export default [
     ],
   },
   {
+    path: '/source-products',
+    name: '货源池',
+    icon: 'DatabaseOutlined',
+    component: './Commerce/SourceProducts',
+  },
+  {
+    path: '/candidates',
+    name: 'AI 选品',
+    icon: 'ExperimentOutlined',
+    component: './Commerce/Candidates',
+  },
+  {
+    path: '/catalog-products',
+    name: '商品库',
+    icon: 'ShoppingOutlined',
+    component: './Commerce/CatalogProducts',
+  },
+  {
+    path: '/listing-drafts',
+    name: '铺货中心',
+    icon: 'ShopOutlined',
+    component: './Commerce/ListingDrafts',
+  },
+  {
     path: '/system/operation-logs',
     name: '操作日志',
     icon: 'AuditOutlined',
