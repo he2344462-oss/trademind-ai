@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	ConfigVersion           = "selection-v2"
 	RecommendationStrong    = "strong_recommend"
 	RecommendationRecommend = "recommend"
 	RecommendationWatch     = "watch"
@@ -82,9 +83,11 @@ type Result struct {
 }
 
 type ConfidenceBreakdown struct {
-	ProductDataBPS    int64 `json:"productDataBps"`
-	CostDataBPS       int64 `json:"costDataBps"`
-	MarketCoverageBPS int64 `json:"marketCoverageBps"`
+	ProductDataBPS               int64 `json:"productDataBps"`
+	CostDataBPS                  int64 `json:"costDataBps"`
+	MarketCoverageBPS            int64 `json:"marketCoverageBps"`
+	MarketSignalConfidenceBPS    int64 `json:"marketSignalConfidenceBps"`
+	OverallAnalysisConfidenceBPS int64 `json:"overallAnalysisConfidenceBps"`
 }
 
 func ptr(v int64) *int64 { return &v }
@@ -232,17 +235,24 @@ func Score(in Input, cfg Config) Result {
 	}
 	costConfidenceBPS := costKnown * 10000 / 4
 	marketConfidenceBPS := int64(0)
+	marketCovered := int64(0)
 	for _, key := range []string{"demand", "competition"} {
 		if item, ok := in.Market[key]; ok && item.ConfidenceBPS > 0 {
 			marketConfidenceBPS += item.ConfidenceBPS / 2
+			marketCovered++
 		}
+	}
+	marketCoverageBPS := marketCovered * 5000
+	marketSignalConfidenceBPS := int64(0)
+	if marketCovered > 0 {
+		marketSignalConfidenceBPS = marketConfidenceBPS * 2 / marketCovered
 	}
 	confidenceBPS := productConfidenceBPS*35/100 + costConfidenceBPS*45/100 + marketConfidenceBPS*20/100
 	confidence := clamp(int64(math.Round(float64(confidenceBPS) / 100)))
 	rec := RecommendationReject
 	if len(blockers) == 0 {
 		switch {
-		case overall >= cfg.StrongRecommendThreshold && confidence >= 75:
+		case overall >= cfg.StrongRecommendThreshold && confidence >= 75 && marketCoverageBPS >= 5000:
 			rec = RecommendationStrong
 		case overall >= cfg.RecommendThreshold:
 			rec = RecommendationRecommend
@@ -266,5 +276,5 @@ func Score(in Input, cfg Config) Result {
 	if len(missing) > 0 {
 		reasons = append(reasons, "当前市场信号覆盖不足，结论是规则初筛，不代表市场爆款概率")
 	}
-	return Result{Dimensions: dims, OverallScore: overall, ConfidenceScore: confidence, Recommendation: rec, Reasons: reasons, Warnings: warnings, Blockers: blockers, MissingDimensions: missing, ConfidenceBreakdown: ConfidenceBreakdown{ProductDataBPS: productConfidenceBPS, CostDataBPS: costConfidenceBPS, MarketCoverageBPS: marketConfidenceBPS}}
+	return Result{Dimensions: dims, OverallScore: overall, ConfidenceScore: confidence, Recommendation: rec, Reasons: reasons, Warnings: warnings, Blockers: blockers, MissingDimensions: missing, ConfidenceBreakdown: ConfidenceBreakdown{ProductDataBPS: productConfidenceBPS, CostDataBPS: costConfidenceBPS, MarketCoverageBPS: marketCoverageBPS, MarketSignalConfidenceBPS: marketSignalConfidenceBPS, OverallAnalysisConfidenceBPS: confidenceBPS}}
 }

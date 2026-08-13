@@ -70,3 +70,7 @@ Changes under `backend/internal/modules/credentialp10`, `inventoryreadp10`, or `
 # Sprint 3 模块补充
 
 批量选品继续归属 `backend/internal/modules/productflow`：`batch_analysis.go` 负责 Redis 批次与幂等领取，`rankingengine` 负责可解释排序，`market_signal.go` 保存带来源和新鲜度的信号，`pricing_profile.go` 负责数据库费用模型。Admin 对应 `Commerce/Candidates`、`Commerce/Recommendations` 与 `Settings/PricingProfiles`。
+
+# Sprint 4 模块补充
+
+批任务控制继续位于 `productflow/batch_control.go`，Worker 不复制领域状态机。`market_signal.go` 负责合法来源 Provider 边界、导入、新鲜度和聚合；`performance.go` 负责用户授权销售表现导入与预测结果评估。新表由 `backend/internal/database/migrate.go` 正式迁移。Admin 对应 `Commerce/AnalysisBatches`、选品工作台、主运营首页与平台费用页面。

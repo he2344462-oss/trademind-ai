@@ -140,3 +140,9 @@ This repository-side implementation is not activated. `currentAllowedLevel=L0`, 
 6. 必要时同步更新 README、本文档和相关设置页面。
 
 新增 Provider 前请复制或参考 [provider-template.md](provider-template.md)，并按 [module-map.md](module-map.md) 检查 settings、环境变量、API、前端页面、任务队列和文档联动。
+
+## Market Signal Provider
+
+市场信号 Provider 必须声明 ID、名称、来源等级、支持平台、支持信号，并实现配置校验与健康检查。允许来源仅限官方 API、用户授权、合法公开数据、人工录入和 CSV 导入。当前内置人工与 CSV Provider；官方/授权 Provider 仅为未配置占位，不执行网络请求。
+
+每条信号保存来源、观测时间、可信度与原始引用。来源等级限制最大有效可信度；fixture 只用于开发测试且不参与正式评分。禁止 Cookie 注入、私有 API、签名破解、验证码绕过、stealth browser 或平台限制规避。

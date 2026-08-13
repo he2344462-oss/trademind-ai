@@ -62,6 +62,7 @@ import {
   type ProductOperationDashboard,
 } from '@/services/dashboard';
 import { queryShops, type ShopListRow } from '@/services/shops';
+import { fetchSelectionDashboard, type SelectionDashboard } from '@/services/productFlow';
 import { useUrlQueryState } from '@/hooks/useUrlState';
 import { appendSourceToUrl, resolveProductSourceFromQuery } from '@/utils/urlState';
 
@@ -753,11 +754,16 @@ export default function ProductOperationsDashboardPage() {
   const [board, setBoard] = useState<ProductOperationDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [selection, setSelection] = useState<SelectionDashboard>();
 
   useEffect(() => {
     void queryShops({ page: 1, pageSize: 200 })
       .then((res) => setShops(res?.list ?? []))
       .catch(() => setShops([]));
+  }, []);
+
+  useEffect(() => {
+    void fetchSelectionDashboard().then(setSelection).catch(() => setSelection(undefined));
   }, []);
 
   useEffect(() => {
@@ -857,6 +863,15 @@ export default function ProductOperationsDashboardPage() {
       }
     >
       {/* 筛选 */}
+      <ProCard variant="outlined" title="AI 选品与销售反馈" style={{ marginBottom: 16 }}>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={6}><MetricCard title="待分析候选" value={selection?.pendingCandidates ?? 0} intent="primary" /></Col>
+          <Col xs={24} sm={12} lg={6}><MetricCard title="建议测试" value={(selection?.strongRecommend ?? 0) + (selection?.recommend ?? 0)} intent="success" /></Col>
+          <Col xs={24} sm={12} lg={6}><MetricCard title="市场信号覆盖" value={`${((selection?.marketCoverageBps ?? 0) / 100).toFixed(0)}%`} intent="warning" /></Col>
+          <Col xs={24} sm={12} lg={6}><MetricCard title="异常分析任务" value={(selection?.pausedBatches ?? 0) + (selection?.failedBatches ?? 0)} intent="danger" /></Col>
+        </Row>
+        <Typography.Paragraph style={{ marginTop: 12, marginBottom: 0 }}>{selection?.operationalSummary || '正在汇总选品运营数据…'}</Typography.Paragraph>
+      </ProCard>
       <ProCard variant="outlined" style={{ marginBottom: 16 }} bodyStyle={{ padding: '12px 16px' }}>
         <Space wrap size={[12, 12]}>
           <RangePicker

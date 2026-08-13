@@ -1,6 +1,6 @@
 import { request } from '@umijs/max';
 import { describe, expect, it, vi } from 'vitest';
-import { addSourceToCandidates, analyzeCandidate, approveCandidate, createListingDraft, deleteListingDraft, fetchCandidateAnalysis, fetchCostCenter, fetchSourceProducts, updateListingDraft } from '../productFlow';
+import { addSourceToCandidates, analyzeCandidate, approveCandidate, controlCandidateAnalysisBatch, createListingDraft, deleteListingDraft, fetchCandidateAnalysis, fetchCostCenter, fetchMarketSignalProviders, fetchSourceProducts, importMarketSignals, importPerformance, updateListingDraft } from '../productFlow';
 
 const requestMock = vi.mocked(request);
 describe('product flow service contracts', () => {
@@ -28,5 +28,16 @@ describe('product flow service contracts', () => {
     expect(requestMock).toHaveBeenNthCalledWith(1, '/api/v1/catalog-products/catalog-1/listing-drafts', { method: 'POST', data: { platform: 'xianyu', pricingProfile: undefined } });
     expect(requestMock).toHaveBeenNthCalledWith(2, '/api/v1/listing-drafts/draft-1', { method: 'PUT', data: { title: '闲鱼标题', salePrice: 59 } });
     expect(requestMock).toHaveBeenNthCalledWith(3, '/api/v1/listing-drafts/draft-1', { method: 'DELETE' });
+  });
+  it('keeps Sprint 4 operations on explicit protected endpoints', async () => {
+    requestMock.mockResolvedValue({ code: 0, message: 'ok', data: {} });
+    await controlCandidateAnalysisBatch('batch-1', 'pause');
+    await importMarketSignals({ items: [] });
+    await fetchMarketSignalProviders();
+    await importPerformance({ items: [] });
+    expect(requestMock).toHaveBeenNthCalledWith(1, '/api/v1/candidate-analysis-batches/batch-1/pause', { method: 'POST', data: {} });
+    expect(requestMock).toHaveBeenNthCalledWith(2, '/api/v1/market-signals/import', { method: 'POST', data: { items: [] } });
+    expect(requestMock).toHaveBeenNthCalledWith(3, '/api/v1/market-signal-providers/status', { method: 'GET', params: undefined });
+    expect(requestMock).toHaveBeenNthCalledWith(4, '/api/v1/performance/import', { method: 'POST', data: { items: [] } });
   });
 });

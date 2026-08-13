@@ -568,3 +568,11 @@ Current code-level P7 endpoints affected: product and order list APIs reject exc
 For `platform=douyin_shop` / `douyin`, the public webhook route resolves the verified payload to a concrete shop binding before persistence. Accepted events carry `tenantId`, `internalShopId`, `platformShopId`, `appId`, and `bindingId` into `webhook_events` and downstream order upsert. Duplicate detection is scoped by `platform + tenant_id + platform_shop_id + event_id`, so the same platform `event_id` from two shops does not collide.
 
 Resolution failures are non-success ACKs and may use codes such as `DOUYIN_WEBHOOK_SHOP_NOT_RESOLVED`, `DOUYIN_WEBHOOK_SHOP_AMBIGUOUS`, `DOUYIN_WEBHOOK_BINDING_REVOKED`, `DOUYIN_WEBHOOK_AUTHORIZATION_EXPIRED`, `DOUYIN_WEBHOOK_APP_BINDING_MISMATCH`, and `DOUYIN_WEBHOOK_TENANT_MISMATCH`.
+
+## Sprint 4 市场信号与运营闭环
+
+批量分析状态以 PostgreSQL 为唯一事实来源，Redis 仅负责唤醒 Worker。新增批任务历史与明细查询，以及 `pause`、`resume`、`cancel`、`retry-failed` 控制接口。暂停等待执行中单商品安全结束，取消阻止领取新商品；失败项区分 `retryable` 与 `non_retryable`。
+
+市场信号新增 `POST /api/v1/market-signals/import` 与 `GET /api/v1/market-signal-providers/status`；销售表现新增 `POST /api/v1/performance/import`、`GET /api/v1/performance`、`GET /api/v1/performance/summary` 和 `GET /api/v1/evaluation/selection-performance`。费用模型新增 `copy` 与 `default` 操作，并保存不可变修订。
+
+来源等级为 `official`、`authorized`、`public`、`manual`、`csv_import`、`fixture`。fixture 永不参与正式 Demand/Competition 聚合；过期信号不参与，陈旧信号降低可信度。当前没有配置官方或授权的闲鱼/淘宝数据接口，Provider 状态返回 `not_configured`，不会执行非授权抓取。

@@ -2,6 +2,7 @@ package productflow
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -159,13 +160,18 @@ type CostCenterSummary struct {
 }
 
 type SelectionDashboard struct {
-	TodaySources      int64                    `json:"todaySources"`
-	PendingCandidates int64                    `json:"pendingCandidates"`
-	TodayAnalyzed     int64                    `json:"todayAnalyzed"`
-	StrongRecommend   int64                    `json:"strongRecommend"`
-	Recommend         int64                    `json:"recommend"`
-	Watch             int64                    `json:"watch"`
-	Reject            int64                    `json:"reject"`
-	AverageMarginBPS  int64                    `json:"averageMarginBps"`
-	RunningBatches    []CandidateAnalysisBatch `json:"runningBatches"`
+	TodaySources         int64                    `json:"todaySources"`
+	PendingCandidates    int64                    `json:"pendingCandidates"`
+	TodayAnalyzed        int64                    `json:"todayAnalyzed"`
+	StrongRecommend      int64                    `json:"strongRecommend"`
+	Recommend            int64                    `json:"recommend"`
+	Watch                int64                    `json:"watch"`
+	Reject               int64                    `json:"reject"`
+	AverageMarginBPS     int64                    `json:"averageMarginBps"`
+	RunningBatches       []CandidateAnalysisBatch `json:"runningBatches"`
+	PausedBatches        int64                    `json:"pausedBatches"`
+	FailedBatches        int64                    `json:"failedBatches"`
+	MarketCoverageBPS    int64                    `json:"marketCoverageBps"`
+	PerformanceUpdatedAt *time.Time               `json:"performanceUpdatedAt,omitempty"`
+	OperationalSummary   string                   `json:"operationalSummary"`
 }

@@ -26,6 +26,12 @@ type BatchDetail struct {
 	Items []CandidateAnalysisBatchItem `json:"items,omitempty"`
 }
 
+type BatchItemDetail struct {
+	CandidateAnalysisBatchItem
+	Candidate *Candidate         `json:"candidate,omitempty"`
+	Analysis  *CandidateAnalysis `json:"analysis,omitempty"`
+}
+
 type RecommendationRow struct {
 	CandidateAnalysisBatchItem
 	Candidate Candidate         `json:"candidate"`
@@ -189,7 +195,7 @@ func (s *Service) claimBatchItem(ctx context.Context, batchID uuid.UUID, workerI
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", batchID).First(&batch).Error; err != nil {
 			return err
 		}
-		if batch.Status == BatchStatusCancelled || batch.Status == BatchStatusCompleted || batch.Status == BatchStatusPartialFailed || batch.Status == BatchStatusFailed {
+		if batch.Status != BatchStatusPending && batch.Status != BatchStatusRunning {
 			return gorm.ErrRecordNotFound
 		}
 		q := tx.Where("batch_id = ? AND status = ?", batchID, BatchItemStatusPending).Order("created_at ASC")
@@ -219,22 +225,16 @@ func (s *Service) claimBatchItem(ctx context.Context, batchID uuid.UUID, workerI
 }
 
 func (s *Service) processBatchItem(ctx context.Context, batch *CandidateAnalysisBatch, item *CandidateAnalysisBatchItem) error {
+	if s.BeforeBatchAnalyze != nil {
+		if err := s.BeforeBatchAnalyze(ctx, item.CandidateID, item.Attempts); err != nil {
+			return s.finishBatchItemError(ctx, batch, item, err)
+		}
+	}
 	body := AnalyzeCandidateBody{AnalysisMode: "rules_only", Platform: batch.Platform, PricingProfileID: batch.PricingProfileID}
 	out, err := s.AnalyzeCandidate(ctx, batch.TenantID, item.CandidateID, body)
 	now := time.Now().UTC()
 	if err != nil {
-		return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if item.Attempts < item.MaxAttempts {
-				if e := tx.Model(item).Updates(map[string]any{"status": BatchItemStatusPending, "error_message": truncateError(err), "completed_at": nil}).Error; e != nil {
-					return e
-				}
-				return tx.Model(batch).Updates(map[string]any{"processing": gorm.Expr("processing - 1"), "pending": gorm.Expr("pending + 1")}).Error
-			}
-			if e := tx.Model(item).Updates(map[string]any{"status": BatchItemStatusFailed, "error_message": truncateError(err), "completed_at": now}).Error; e != nil {
-				return e
-			}
-			return tx.Model(batch).Updates(map[string]any{"processing": gorm.Expr("processing - 1"), "failed": gorm.Expr("failed + 1")}).Error
-		})
+		return s.finishBatchItemError(ctx, batch, item, err)
 	}
 	risk := int64(0)
 	if d, ok := out.Score.Dimensions["risk"]; ok && d.Score != nil {
@@ -247,6 +247,30 @@ func (s *Service) processBatchItem(ctx context.Context, batch *CandidateAnalysis
 		}
 		return tx.Model(batch).Updates(map[string]any{"processing": gorm.Expr("processing - 1"), "completed": gorm.Expr("completed + 1")}).Error
 	})
+}
+
+func (s *Service) finishBatchItemError(ctx context.Context, batch *CandidateAnalysisBatch, item *CandidateAnalysisBatchItem, err error) error {
+	now := time.Now().UTC()
+	errorType := classifyBatchError(err)
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if errorType == BatchErrorRetryable && item.Attempts < item.MaxAttempts {
+			if e := tx.Model(item).Updates(map[string]any{"status": BatchItemStatusPending, "error_message": truncateError(err), "error_type": errorType, "completed_at": nil}).Error; e != nil {
+				return e
+			}
+			return tx.Model(batch).Updates(map[string]any{"processing": gorm.Expr("processing - 1"), "pending": gorm.Expr("pending + 1")}).Error
+		}
+		if e := tx.Model(item).Updates(map[string]any{"status": BatchItemStatusFailed, "error_message": truncateError(err), "error_type": errorType, "completed_at": now}).Error; e != nil {
+			return e
+		}
+		return tx.Model(batch).Updates(map[string]any{"processing": gorm.Expr("processing - 1"), "failed": gorm.Expr("failed + 1")}).Error
+	})
+}
+
+func classifyBatchError(err error) string {
+	if errors.Is(err, ErrValidation) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalidTransition) {
+		return BatchErrorNonRetryable
+	}
+	return BatchErrorRetryable
 }
 
 func truncateError(err error) string {
@@ -262,7 +286,17 @@ func (s *Service) finalizeBatch(ctx context.Context, batchID uuid.UUID) error {
 	if err := s.DB.WithContext(ctx).First(&batch, "id = ?", batchID).Error; err != nil {
 		return err
 	}
+	if batch.Status == BatchStatusPausing && batch.Processing == 0 {
+		return s.DB.WithContext(ctx).Model(&batch).Updates(map[string]any{"status": BatchStatusPaused, "control_version": gorm.Expr("control_version + 1")}).Error
+	}
+	if batch.Status == BatchStatusCancelling && batch.Processing == 0 {
+		now := time.Now().UTC()
+		return s.DB.WithContext(ctx).Model(&batch).Updates(map[string]any{"status": BatchStatusCancelled, "completed_at": now, "control_version": gorm.Expr("control_version + 1")}).Error
+	}
 	if batch.Pending > 0 || batch.Processing > 0 {
+		return nil
+	}
+	if batch.Status == BatchStatusPaused || batch.Status == BatchStatusCancelled {
 		return nil
 	}
 	var items []CandidateAnalysisBatchItem
@@ -312,8 +346,16 @@ func (s *Service) finalizeBatch(ctx context.Context, batchID uuid.UUID) error {
 				return err
 			}
 		}
-		if err := tx.Model(&batch).Updates(map[string]any{"status": status, "completed_at": now}).Error; err != nil {
-			return err
+		updated := tx.Model(&CandidateAnalysisBatch{}).
+			Where("id = ? AND control_version = ? AND pending = 0 AND processing = 0 AND status IN ?", batch.ID, batch.ControlVersion, []string{BatchStatusPending, BatchStatusRunning}).
+			Updates(map[string]any{"status": status, "completed_at": now})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected == 0 {
+			// A pause/resume/cancel/retry command won the race. Its newer
+			// control version is authoritative and must not be overwritten.
+			return nil
 		}
 		return nil
 	})
@@ -330,6 +372,7 @@ func (s *Service) RunAnalysisBatch(ctx context.Context, batchID uuid.UUID, worke
 			return
 		}
 		_ = s.processBatchItem(ctx, batch, item)
+		_ = s.finalizeBatch(ctx, batchID)
 	}
 }
 
@@ -341,13 +384,26 @@ func (s *Service) RecoverStaleAnalysisItems(ctx context.Context, staleBefore tim
 			return err
 		}
 		for _, item := range items {
+			var batch CandidateAnalysisBatch
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", item.BatchID).First(&batch).Error; err != nil {
+				return err
+			}
+			if batch.Status == BatchStatusCancelling || batch.Status == BatchStatusCancelled {
+				if err := tx.Model(&item).Updates(map[string]any{"status": BatchItemStatusCancelled, "worker_id": "", "error_message": "cancelled after worker interruption", "error_type": "", "completed_at": time.Now().UTC()}).Error; err != nil {
+					return err
+				}
+				if err := tx.Model(&batch).Updates(map[string]any{"processing": gorm.Expr("processing - 1")}).Error; err != nil {
+					return err
+				}
+				continue
+			}
 			status := BatchItemStatusPending
 			batchUpdates := map[string]any{"processing": gorm.Expr("processing - 1"), "pending": gorm.Expr("pending + 1")}
 			if item.Attempts >= item.MaxAttempts {
 				status = BatchItemStatusFailed
 				batchUpdates = map[string]any{"processing": gorm.Expr("processing - 1"), "failed": gorm.Expr("failed + 1")}
 			}
-			if err := tx.Model(&item).Updates(map[string]any{"status": status, "worker_id": "", "error_message": "worker interrupted; recovered", "completed_at": nil}).Error; err != nil {
+			if err := tx.Model(&item).Updates(map[string]any{"status": status, "worker_id": "", "error_message": "worker interrupted; recovered", "error_type": BatchErrorRetryable, "completed_at": nil}).Error; err != nil {
 				return err
 			}
 			if err := tx.Model(&CandidateAnalysisBatch{}).Where("id = ?", item.BatchID).Updates(batchUpdates).Error; err != nil {

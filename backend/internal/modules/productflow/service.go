@@ -29,16 +29,20 @@ var (
 )
 
 type Service struct {
-	DB                   *gorm.DB
-	AIExplain            func(context.Context, string) (string, error)
-	Redis                *rdb.Client
-	OpLog                *operationlog.Service
-	AnalysisQueueEnabled bool
-	AnalysisQueueName    string
-	AnalysisConcurrency  int
-	AnalysisMaxRetries   int
-	AIExplanationTopN    int
-	MarketSignals        MarketSignalProvider
+	DB                    *gorm.DB
+	AIExplain             func(context.Context, string) (string, error)
+	Redis                 *rdb.Client
+	OpLog                 *operationlog.Service
+	AnalysisQueueEnabled  bool
+	AnalysisQueueName     string
+	AnalysisConcurrency   int
+	AnalysisMaxRetries    int
+	AIExplanationTopN     int
+	MarketSignalProviders []MarketSignalProvider
+	MarketSignalFreshness map[string]MarketSignalFreshnessPolicy
+	// BeforeBatchAnalyze is an integration-test seam for deterministic transient failures.
+	// Production constructors leave it nil; it is never exposed through HTTP configuration.
+	BeforeBatchAnalyze func(context.Context, uuid.UUID, int) error
 }
 
 type CollectedSourceInput struct {
@@ -348,9 +352,28 @@ func (s *Service) SelectionDashboard(ctx context.Context, tenantID int64) (*Sele
 	if average != nil {
 		out.AverageMarginBPS = int64(math.Round(*average * 10000))
 	}
-	if err := db.Where("tenant_id = ? AND status IN ?", tenantID, []string{BatchStatusPending, BatchStatusRunning}).Order("created_at DESC").Limit(5).Find(&out.RunningBatches).Error; err != nil {
+	if err := db.Where("tenant_id = ? AND status IN ?", tenantID, []string{BatchStatusPending, BatchStatusRunning, BatchStatusPausing, BatchStatusPaused}).Order("created_at DESC").Limit(5).Find(&out.RunningBatches).Error; err != nil {
 		return nil, err
 	}
+	if err := db.Model(&CandidateAnalysisBatch{}).Where("tenant_id = ? AND status = ?", tenantID, BatchStatusPaused).Count(&out.PausedBatches).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&CandidateAnalysisBatch{}).Where("tenant_id = ? AND status IN ?", tenantID, []string{BatchStatusFailed, BatchStatusPartialFailed}).Count(&out.FailedBatches).Error; err != nil {
+		return nil, err
+	}
+	type marketCoverageRow struct {
+		Candidates int64
+		Covered    int64
+	}
+	var coverage marketCoverageRow
+	if err := db.Raw("SELECT COUNT(*) candidates, SUM(CASE WHEN demand_score IS NOT NULL OR competition_score IS NOT NULL THEN 1 ELSE 0 END) covered FROM candidates WHERE tenant_id = ?", tenantID).Scan(&coverage).Error; err == nil && coverage.Candidates > 0 {
+		out.MarketCoverageBPS = coverage.Covered * 10000 / coverage.Candidates
+	}
+	var latest *time.Time
+	if err := db.Model(&ListingPerformanceSnapshot{}).Where("tenant_id = ?", tenantID).Select("MAX(observed_at)").Scan(&latest).Error; err == nil {
+		out.PerformanceUpdatedAt = latest
+	}
+	out.OperationalSummary = fmt.Sprintf("今日新增 %d 个货源，完成 %d 个候选分析；其中 %d 个建议测试，市场信号覆盖 %.0f%%。", out.TodaySources, out.TodayAnalyzed, out.StrongRecommend+out.Recommend, float64(out.MarketCoverageBPS)/100)
 	return out, nil
 }
 

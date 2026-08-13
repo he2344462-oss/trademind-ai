@@ -60,7 +60,7 @@ func StartAnalysisWorker(ctx context.Context, wg *sync.WaitGroup, log *slog.Logg
 				if err != nil {
 					continue
 				}
-				svc.RunAnalysisBatch(context.Background(), id, workerID)
+				svc.RunAnalysisBatch(ctx, id, workerID)
 			}
 		}(slot)
 	}

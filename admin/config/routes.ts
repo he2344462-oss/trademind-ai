@@ -44,6 +44,7 @@ export default [
     component: './Commerce/Candidates',
   },
   { path: '/recommendations', name: 'AI 推荐榜', icon: 'TrophyOutlined', component: './Commerce/Recommendations' },
+  { path: '/analysis-batches', name: '分析任务', icon: 'ProfileOutlined', component: './Commerce/AnalysisBatches' },
   {
     path: '/catalog-products',
     name: '商品库',

@@ -2,6 +2,8 @@ package rankingengine
 
 import "github.com/trademind-ai/trademind/backend/internal/modules/productflow/pricingengine"
 
+const ConfigVersion = "ranking-v1"
+
 type Config struct {
 	OverallWeight    int64               `json:"overallWeight"`
 	ConfidenceWeight int64               `json:"confidenceWeight"`

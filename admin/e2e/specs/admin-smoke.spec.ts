@@ -210,6 +210,10 @@ function expectThemeFramesConsistent(
 }
 
 const smokeRoutes = [
+  { path: "/selection-dashboard", name: /AI 选品工作台/ },
+  { path: "/analysis-batches", name: /分析任务/ },
+  { path: "/recommendations", name: /AI 推荐榜/ },
+  { path: "/system/pricing-profiles", name: /平台费用模型/ },
   { path: "/dashboard/product-operations", name: /运营总览|工作台/ },
   { path: "/collect/hub", name: /采集中心/ },
   { path: "/ai/operation-workbench", name: /商品运营工作台/ },

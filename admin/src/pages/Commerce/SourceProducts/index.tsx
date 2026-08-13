@@ -14,7 +14,7 @@ export default function SourceProductsPage() {
     { title: '来源', dataIndex: 'sourcePlatform', width: 90 }, { title: '供应商', dataIndex: 'supplierName', search: false, width: 140 },
     { title: '采购价', dataIndex: 'sourcePrice', search: false, render: (_, r) => money(r.sourcePrice), width: 100 },
     { title: '运费', dataIndex: 'freight', search: false, render: (_, r) => money(r.freight), width: 90 },
-    { title: 'SKU', search: false, render: (_, r) => r.skuData?.length ?? 0, width: 70 },
+    { title: '规格', search: false, render: (_, r) => r.skuData?.length ?? 0, width: 70 },
     { title: '采集时间', dataIndex: 'collectedAt', search: false, renderText: (value) => formatDateTime(value), width: 170 },
     { title: '状态', dataIndex: 'status', valueType: 'select', valueEnum: { collected: { text: '已采集' }, candidate: { text: '已入候选' }, approved: { text: '已批准' } }, render: (_, r) => statusTag(r.status), width: 100 },
     { title: '操作', valueType: 'option', render: (_, r) => [<a key="detail" onClick={() => setDetail(r)}>查看详情</a>, <a key="candidate" onClick={async () => { const out = await addSourceToCandidates(r.id); message.success(out.created ? '已加入候选池' : '候选记录已存在'); actionRef.current?.reload(); }}>加入候选池</a>] },

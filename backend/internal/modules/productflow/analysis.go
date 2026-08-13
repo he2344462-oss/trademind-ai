@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/pricingengine"
+	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/rankingengine"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/selectionengine"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -231,6 +232,12 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
+	profileVersion := 1
+	if profileID != nil {
+		if profileRow, profileErr := s.GetPricingProfile(ctx, tenantID, *profileID); profileErr == nil {
+			profileVersion = profileRow.Version
+		}
+	}
 	costIn, err := pricingInput(candidate.SourceProduct, body, profile)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
@@ -298,7 +305,7 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 			return e
 		}
 		version := locked.AnalysisVersion + 1
-		saved = CandidateAnalysis{TenantID: tenantID, CandidateID: id, AnalysisVersion: version, AnalysisMode: mode, Platform: platform, InputSnapshot: inputJSON, CostSnapshot: costJSON, SKUSnapshot: skuJSON, ScoreBreakdown: scoreJSON, OverallScore: score.OverallScore, ConfidenceScore: score.ConfidenceScore, Recommendation: score.Recommendation, Reasons: reasons, Warnings: warnings, Blockers: blockers, Explanation: explainJSON, AIStatus: aiStatus, PricingProfileID: profileID, MarketSignalSnapshot: marketJSON, ConfidenceBreakdown: confidenceJSON}
+		saved = CandidateAnalysis{TenantID: tenantID, CandidateID: id, AnalysisVersion: version, AnalysisMode: mode, Platform: platform, InputSnapshot: inputJSON, CostSnapshot: costJSON, SKUSnapshot: skuJSON, ScoreBreakdown: scoreJSON, OverallScore: score.OverallScore, ConfidenceScore: score.ConfidenceScore, Recommendation: score.Recommendation, Reasons: reasons, Warnings: warnings, Blockers: blockers, Explanation: explainJSON, AIStatus: aiStatus, PricingProfileID: profileID, MarketSignalSnapshot: marketJSON, ConfidenceBreakdown: confidenceJSON, ScoringConfigVersion: selectionengine.ConfigVersion, PricingProfileVersion: profileVersion, RankingConfigVersion: rankingengine.ConfigVersion}
 		if e := tx.Create(&saved).Error; e != nil {
 			return e
 		}

@@ -2,9 +2,11 @@ package productflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/pricingengine"
@@ -44,7 +46,7 @@ func pricingProfileFromInput(tenantID int64, body PricingProfileInput) (PricingP
 	if body.Enabled != nil {
 		enabled = *body.Enabled
 	}
-	return PricingProfile{TenantID: tenantID, Name: strings.TrimSpace(body.Name), Platform: platform, Currency: currency, PlatformFeeBPS: body.PlatformFeeBPS, PlatformFeeFixed: int64(pf), PaymentFeeBPS: body.PaymentFeeBPS, PaymentFeeFixed: int64(pay), ReturnReserveBPS: body.ReturnReserveBPS, OtherBPS: body.OtherBPS, OtherFixed: int64(other), IsDefault: body.IsDefault, Enabled: enabled}, nil
+	return PricingProfile{TenantID: tenantID, Name: strings.TrimSpace(body.Name), Platform: platform, Currency: currency, PlatformFeeBPS: body.PlatformFeeBPS, PlatformFeeFixed: int64(pf), PaymentFeeBPS: body.PaymentFeeBPS, PaymentFeeFixed: int64(pay), ReturnReserveBPS: body.ReturnReserveBPS, OtherBPS: body.OtherBPS, OtherFixed: int64(other), IsDefault: body.IsDefault, Enabled: enabled, Version: 1}, nil
 }
 
 func (s *Service) savePricingProfile(ctx context.Context, row *PricingProfile) error {
@@ -54,7 +56,15 @@ func (s *Service) savePricingProfile(ctx context.Context, row *PricingProfile) e
 				return err
 			}
 		}
-		return tx.Save(row).Error
+		if err := tx.Save(row).Error; err != nil {
+			return err
+		}
+		snapshot, err := json.Marshal(row)
+		if err != nil {
+			return err
+		}
+		revision := PricingProfileRevision{TenantID: row.TenantID, ProfileID: row.ID, Version: row.Version, Snapshot: snapshot, ActorType: "manual", ActorID: row.UpdatedBy}
+		return tx.Create(&revision).Error
 	})
 }
 
@@ -72,6 +82,10 @@ func (s *Service) CreatePricingProfile(ctx context.Context, tenantID int64, body
 	return &row, nil
 }
 func (s *Service) UpdatePricingProfile(ctx context.Context, tenantID int64, id uuid.UUID, body PricingProfileInput) (*PricingProfile, error) {
+	return s.UpdatePricingProfileWithActor(ctx, tenantID, id, nil, body)
+}
+
+func (s *Service) UpdatePricingProfileWithActor(ctx context.Context, tenantID int64, id uuid.UUID, actorID *uuid.UUID, body PricingProfileInput) (*PricingProfile, error) {
 	var existing PricingProfile
 	if err := s.DB.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, id).First(&existing).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -85,10 +99,56 @@ func (s *Service) UpdatePricingProfile(ctx context.Context, tenantID int64, id u
 	}
 	row.ID = existing.ID
 	row.CreatedAt = existing.CreatedAt
+	row.Version = existing.Version + 1
+	row.UpdatedBy = actorID
 	if err = s.savePricingProfile(ctx, &row); err != nil {
 		return nil, err
 	}
 	return &row, nil
+}
+
+func (s *Service) CopyPricingProfile(ctx context.Context, tenantID int64, id uuid.UUID, actorID *uuid.UUID) (*PricingProfile, error) {
+	existing, err := s.GetPricingProfile(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	row := *existing
+	row.ID = uuid.Nil
+	row.CreatedAt = time.Time{}
+	row.UpdatedAt = time.Time{}
+	row.DeletedAt = gorm.DeletedAt{}
+	row.Name = existing.Name + " 副本"
+	row.IsDefault = false
+	row.Version = 1
+	row.UpdatedBy = actorID
+	if err := s.savePricingProfile(ctx, &row); err != nil {
+		if isUniqueError(err) {
+			row.Name = existing.Name + " 副本 " + time.Now().UTC().Format("20060102150405")
+			if err = s.savePricingProfile(ctx, &row); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+	return &row, nil
+}
+
+func (s *Service) SetDefaultPricingProfile(ctx context.Context, tenantID int64, id uuid.UUID, actorID *uuid.UUID) (*PricingProfile, error) {
+	row, err := s.GetPricingProfile(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if !row.Enabled {
+		return nil, fmt.Errorf("%w: disabled profile cannot be default", ErrInvalidTransition)
+	}
+	row.IsDefault = true
+	row.Version++
+	row.UpdatedBy = actorID
+	if err := s.savePricingProfile(ctx, row); err != nil {
+		return nil, err
+	}
+	return row, nil
 }
 func (s *Service) ListPricingProfiles(ctx context.Context, tenantID int64, platform string) ([]PricingProfile, error) {
 	var rows []PricingProfile

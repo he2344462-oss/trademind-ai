@@ -17,7 +17,7 @@ func newTestService(t *testing.T) *Service {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &ListingDraft{}, &PricingProfile{}, &MarketSignalSnapshot{}, &CandidateAnalysisBatch{}, &CandidateAnalysisBatchItem{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
+	require.NoError(t, db.AutoMigrate(&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &ListingDraft{}, &PricingProfile{}, &PricingProfileRevision{}, &MarketSignalSnapshot{}, &MarketSignalProviderConfig{}, &CandidateAnalysisBatch{}, &CandidateAnalysisBatchItem{}, &ListingPerformanceSnapshot{}, &SelectionOutcomeEvaluation{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
 	return &Service{DB: db}
 }
 
@@ -150,7 +150,7 @@ func TestRankingEngineAndBlockerBulkApproval(t *testing.T) {
 	require.Contains(t, result.Failed, candidate.ID.String())
 }
 
-func TestBatchFailureIsolationAndRetryExhaustion(t *testing.T) {
+func TestBatchNonRetryableFailureIsIsolatedWithoutPointlessRetry(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 	batch := CandidateAnalysisBatch{TenantID: 0, Status: BatchStatusPending, Total: 1, Pending: 1, AnalysisMode: "rules_only", Platform: "xianyu", TopN: 20, ExcludeBlocked: true}
@@ -163,8 +163,9 @@ func TestBatchFailureIsolationAndRetryExhaustion(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, BatchStatusFailed, detail.Status)
 	require.Equal(t, 1, detail.Failed)
-	require.Equal(t, 2, detail.Items[0].Attempts)
+	require.Equal(t, 1, detail.Items[0].Attempts)
 	require.Equal(t, BatchItemStatusFailed, detail.Items[0].Status)
+	require.Equal(t, BatchErrorNonRetryable, detail.Items[0].ErrorType)
 }
 
 func TestRecoverStaleAnalysisItem(t *testing.T) {

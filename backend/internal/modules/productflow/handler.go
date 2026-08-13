@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/trademind-ai/trademind/backend/internal/modules/operationlog"
 	"github.com/trademind-ai/trademind/backend/internal/pkg/adminperm"
 	"github.com/trademind-ai/trademind/backend/internal/pkg/ctxkey"
 	"github.com/trademind-ai/trademind/backend/internal/pkg/response"
@@ -484,6 +485,77 @@ func (h *Handler) GetAnalysisBatch(c *gin.Context) {
 	}
 	response.OK(c, out)
 }
+
+func (h *Handler) ListAnalysisBatches(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListAnalysisBatches(c.Request.Context(), tenant, pageQuery(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h *Handler) ListAnalysisBatchItems(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListAnalysisBatchItems(c.Request.Context(), tenant, id, pageQuery(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h *Handler) controlAnalysisBatch(c *gin.Context, action string) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var out *BatchControlResult
+	var err error
+	switch action {
+	case "pause":
+		out, err = h.Svc.PauseAnalysisBatch(c.Request.Context(), tenant, id)
+	case "resume":
+		out, err = h.Svc.ResumeAnalysisBatch(c.Request.Context(), tenant, id)
+	case "cancel":
+		out, err = h.Svc.CancelAnalysisBatch(c.Request.Context(), tenant, id)
+	case "retry_failed":
+		out, err = h.Svc.RetryFailedAnalysisBatch(c.Request.Context(), tenant, id)
+	default:
+		err = ErrValidation
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if h.Svc.OpLog != nil {
+		_ = h.Svc.OpLog.Write(c, operationlog.WriteOpts{TenantID: tenant, AdminUserID: actorID(c), Action: "candidate_batch." + action, Resource: "candidate_analysis_batch", ResourceID: id.String(), Status: "success", Message: "批量分析任务控制操作"})
+	}
+	response.OK(c, out)
+}
+
+func (h *Handler) PauseAnalysisBatch(c *gin.Context)       { h.controlAnalysisBatch(c, "pause") }
+func (h *Handler) ResumeAnalysisBatch(c *gin.Context)      { h.controlAnalysisBatch(c, "resume") }
+func (h *Handler) CancelAnalysisBatch(c *gin.Context)      { h.controlAnalysisBatch(c, "cancel") }
+func (h *Handler) RetryFailedAnalysisBatch(c *gin.Context) { h.controlAnalysisBatch(c, "retry_failed") }
 func (h *Handler) TopRecommendations(c *gin.Context) {
 	tenant, ok := h.tenant(c)
 	if !ok {
@@ -541,6 +613,94 @@ func (h *Handler) ListMarketSignals(c *gin.Context) {
 	}
 	response.OK(c, gin.H{"list": out})
 }
+func (h *Handler) ImportMarketSignals(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body ImportMarketSignalsBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+		return
+	}
+	out, err := h.Svc.ImportMarketSignals(c.Request.Context(), tenant, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) MarketSignalProviderStatuses(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.MarketSignalProviderStatuses(c.Request.Context(), tenant)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) ImportPerformance(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body ImportPerformanceBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+		return
+	}
+	out, err := h.Svc.ImportPerformance(c.Request.Context(), tenant, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ListPerformance(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListPerformance(c.Request.Context(), tenant, pageQuery(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) PerformanceSummary(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.PerformanceSummary(c.Request.Context(), tenant)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) SelectionPerformance(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.SelectionPerformance(c.Request.Context(), tenant)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
 func (h *Handler) ListPricingProfiles(c *gin.Context) {
 	tenant, ok := h.tenant(c)
 	if !ok {
@@ -590,7 +750,45 @@ func (h *Handler) UpdatePricingProfile(c *gin.Context) {
 		response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
 		return
 	}
-	out, err := h.Svc.UpdatePricingProfile(c.Request.Context(), tenant, id, body)
+	out, err := h.Svc.UpdatePricingProfileWithActor(c.Request.Context(), tenant, id, actorID(c), body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) CopyPricingProfile(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.CopyPricingProfile(c.Request.Context(), tenant, id, actorID(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) SetDefaultPricingProfile(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.SetDefaultPricingProfile(c.Request.Context(), tenant, id, actorID(c))
 	if err != nil {
 		fail(c, err)
 		return

@@ -14,7 +14,7 @@ export default function CatalogProductsPage() {
     { title: '商品', dataIndex: 'keyword', render: (_, r) => imageCell(r.images?.[0]?.publicUrl || r.images?.[0]?.originUrl, r.title) },
     { title: '供应商', dataIndex: 'supplier', search: false, width: 140 }, { title: '采购成本', dataIndex: 'purchaseCost', search: false, render: (_, r) => money(r.purchaseCost), width: 110 },
     { title: '建议售价', dataIndex: 'suggestedSalePrice', search: false, render: (_, r) => money(r.suggestedSalePrice), width: 110 }, { title: '预计利润', dataIndex: 'estimatedProfit', search: false, render: (_, r) => money(r.estimatedProfit), width: 110 },
-    { title: '利润率', dataIndex: 'estimatedMargin', search: false, render: (_, r) => percent(r.estimatedMargin), width: 90 }, { title: 'SKU', search: false, render: (_, r) => r.skus?.length ?? 0, width: 70 },
+    { title: '利润率', dataIndex: 'estimatedMargin', search: false, render: (_, r) => percent(r.estimatedMargin), width: 90 }, { title: '规格', search: false, render: (_, r) => r.skus?.length ?? 0, width: 70 },
     { title: '状态', dataIndex: 'status', render: (_, r) => statusTag(r.catalogStatus), width: 100 },
     { title: '操作', valueType: 'option', render: (_, r) => [<a key="view" onClick={() => history.push(`/product/drafts/${r.id}`)}>查看 / 编辑</a>, <a key="draft" onClick={() => setDrafting(r)}>创建铺货草稿</a>] },
   ];

@@ -35,6 +35,10 @@ export async function routeAdminApi(page: Page) {
       (path === '/api/v1/auth/profile' ? ok(e2eUser) : null) ??
       (path === '/api/v1/settings' ? ok({ items: [] }) : null) ??
       (path === '/api/v1/image/providers' ? ok(imageProviderCapabilities) : null) ??
+      (path === '/api/v1/selection-dashboard' ? ok({ todaySources: 12, pendingCandidates: 8, todayAnalyzed: 20, strongRecommend: 2, recommend: 5, watch: 7, reject: 6, averageMarginBps: 3250, runningBatches: [], pausedBatches: 1, failedBatches: 0, marketCoverageBps: 2500, operationalSummary: '测试运营摘要' }) : null) ??
+      (path === '/api/v1/performance/summary' ? ok({ snapshotCount: 20, listingCount: 20, views: 1200, inquiries: 80, orders: 12, refunds: 1, grossRevenue: 47880, realizedProfit: 16800, actualMarginBps: 3508 }) : null) ??
+      (path === '/api/v1/evaluation/selection-performance' ? ok({ generatedAt: '2026-08-13T00:00:00Z', groups: [] }) : null) ??
+      (path === '/api/v1/pricing-profiles' ? ok({ list: [] }) : null) ??
       inventorySyncP9Response(path) ??
       productsResponse(path) ??
       readinessResponse(path) ??

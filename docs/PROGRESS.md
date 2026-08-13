@@ -2,6 +2,8 @@
 
 更新时间：2026-08-13
 
+2026-08-13 Sprint 4：批量候选分析增加暂停、恢复、取消、可重试失败恢复与任务明细；市场信号增加来源等级、Provider 状态、CSV/结构化导入、去重、新鲜度和多来源聚合；新增精确金额销售表现快照及 Selection Outcome Evaluation；Pricing Profile 增加不可变版本修订；选品工作台、主运营首页、分析任务页和费用设置页接入运营闭环。当前没有配置官方/授权的闲鱼或淘宝市场数据 Provider，系统明确显示未配置，不进行非授权抓取，也不实现真实平台发布。
+
 2026-08-13 Sprint 2 新增精确金额 Cost/Profit Engine、可配置且默认未配置的 Platform Pricing Profile、SKU 级利润、确定性 Selection Score Engine、动态权重/置信度/Blocker、不可变 `candidate_analyses` 历史快照，以及 Admin 候选分析与成本利润中心。AI 仅作为可选解释层，失败时使用规则模板；真实需求和竞争数据继续显示 unknown。本阶段仍不连接或发布到闲鱼、淘宝。
 
 2026-08-13 进入 Sprint 1 商品业务模型重构：新增 `source_products`、`candidates`、`listing_drafts`，并以兼容字段将旧 `products` 定义为 Catalog Product 实现基础。Collector 成功结果先幂等写入货源池，再保留旧商品草稿写入与 `result_product_id`；新 API 和 Admin 页面支持人工完成货源 → 候选 → 批准 → 商品库 → 闲鱼/淘宝草稿闭环。本阶段没有启用 AI 自动决策或任何真实平台发布。
