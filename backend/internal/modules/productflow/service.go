@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/trademind-ai/trademind/backend/internal/modules/product"
+	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/pricingengine"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -25,7 +26,10 @@ var (
 	ErrValidation        = errors.New("validation failed")
 )
 
-type Service struct{ DB *gorm.DB }
+type Service struct {
+	DB        *gorm.DB
+	AIExplain func(context.Context, string) (string, error)
+}
 
 type CollectedSourceInput struct {
 	TenantID        int64
@@ -250,11 +254,63 @@ func (s *Service) ListCandidates(ctx context.Context, tenantID int64, q ListQuer
 	if err := db.Count(&total).Error; err != nil {
 		return PageResult[Candidate]{}, err
 	}
-	err := db.Order("candidates.created_at DESC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&rows).Error
+	order := "candidates.created_at DESC"
+	column := map[string]string{"overall_score": "potential_score", "estimated_margin": "estimated_margin", "estimated_profit": "estimated_profit", "analyzed_at": "analyzed_at"}[q.SortBy]
+	if column != "" {
+		direction := "DESC"
+		if strings.EqualFold(q.SortOrder, "asc") {
+			direction = "ASC"
+		}
+		order = "candidates." + column + " " + direction + " NULLS LAST"
+	}
+	err := db.Order(order).Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&rows).Error
 	if err == nil {
 		err = s.attachCandidateSources(ctx, tenantID, rows)
 	}
 	return PageResult[Candidate]{List: rows, Page: q.Page, PageSize: q.PageSize, Total: total, TotalPages: totalPages(total, q.PageSize)}, err
+}
+
+func (s *Service) CostCenter(ctx context.Context, tenantID int64) (*CostCenterSummary, error) {
+	var products []product.Product
+	if err := s.DB.WithContext(ctx).Where("tenant_id = ? AND candidate_id IS NOT NULL", tenantID).Order("created_at DESC").Preload("Images").Find(&products).Error; err != nil {
+		return nil, err
+	}
+	out := &CostCenterSummary{ProductCount: int64(len(products)), Products: make([]any, 0, len(products))}
+	var marginSum int64
+	var analyzedCount int64
+	for _, p := range products {
+		margin := int64(0)
+		if p.EstimatedMargin != nil {
+			margin = int64(math.Round(*p.EstimatedMargin * 10000))
+			marginSum += margin
+			analyzedCount++
+		}
+		profit := 0.0
+		if p.EstimatedProfit != nil {
+			profit = *p.EstimatedProfit
+		}
+		if p.EstimatedMargin != nil && (profit <= 0 || margin < 2000) {
+			out.LowProfitCount++
+		}
+		if profit >= 20 && margin >= 4000 {
+			out.HighProfitCount++
+		}
+		if p.PurchaseCost == nil || p.SuggestedSalePrice == nil || profit < 0 {
+			out.CostAnomalyCount++
+		}
+		cover := ""
+		if len(p.Images) > 0 {
+			cover = p.Images[0].PublicURL
+			if cover == "" {
+				cover = p.Images[0].OriginURL
+			}
+		}
+		out.Products = append(out.Products, map[string]any{"id": p.ID, "title": p.Title, "coverUrl": cover, "purchaseCost": p.PurchaseCost, "freightCost": p.FreightCost, "packagingCost": p.PackagingCost, "otherCost": p.OtherCost, "suggestedSalePrice": p.SuggestedSalePrice, "estimatedProfit": p.EstimatedProfit, "estimatedMargin": p.EstimatedMargin, "catalogStatus": p.CatalogStatus})
+	}
+	if analyzedCount > 0 {
+		out.AverageMarginBPS = marginSum / analyzedCount
+	}
+	return out, nil
 }
 
 func (s *Service) GetCandidate(ctx context.Context, tenantID int64, id uuid.UUID) (*Candidate, error) {
@@ -351,9 +407,23 @@ func (s *Service) ApproveCandidate(ctx context.Context, tenantID int64, id uuid.
 			return err
 		}
 		candidate.SourceProduct = src
+		packagingCost, otherCost := (*float64)(nil), (*float64)(nil)
+		var latest CandidateAnalysis
+		if err := tx.Where("tenant_id = ? AND candidate_id = ?", tenantID, candidate.ID).Order("analysis_version DESC").First(&latest).Error; err == nil {
+			var input struct {
+				Request AnalyzeCandidateBody `json:"request"`
+			}
+			_ = json.Unmarshal(latest.InputSnapshot, &input)
+			if value, parseErr := pricingengine.ParseMoney(input.Request.PackagingCost); parseErr == nil {
+				packagingCost = moneyFloat(value)
+			}
+			if value, parseErr := pricingengine.ParseMoney(input.Request.OtherCost); parseErr == nil {
+				otherCost = moneyFloat(value)
+			}
+		}
 		catalog = product.Product{TenantID: tenantID, SourceProductID: &src.ID, CandidateID: &candidate.ID, Source: src.SourcePlatform, SourceURL: src.SourceURL,
 			OriginalTitle: src.OriginalTitle, Title: src.OriginalTitle, Description: src.OriginalDescription, Currency: "CNY", Status: product.StatusDraft,
-			CatalogStatus: CatalogStatusDraft, Category: src.OriginalCategory, Supplier: src.SupplierName, PurchaseCost: src.SourcePrice, FreightCost: src.Freight,
+			CatalogStatus: CatalogStatusDraft, Category: src.OriginalCategory, Supplier: src.SupplierName, PurchaseCost: src.SourcePrice, FreightCost: src.Freight, PackagingCost: packagingCost, OtherCost: otherCost,
 			SuggestedSalePrice: candidate.EstimatedSalePrice, SalePrice: candidate.EstimatedSalePrice, EstimatedProfit: candidate.EstimatedProfit,
 			EstimatedMargin: candidate.EstimatedMargin, RawData: src.RawData}
 		if err := tx.Create(&catalog).Error; err != nil {
@@ -500,7 +570,24 @@ func (s *Service) CreateListingDraft(ctx context.Context, tenantID int64, catalo
 	}
 	imageJSON, _ := json.Marshal(images)
 	skuJSON, _ := json.Marshal(catalog.SKUs)
-	row := ListingDraft{TenantID: tenantID, CatalogProductID: catalog.ID, Platform: platform, ShopID: body.ShopID, Title: catalog.Title, Description: catalog.Description, Images: imageJSON, SalePrice: catalog.SalePrice, PlatformCategory: catalog.Category, PlatformSKUData: skuJSON, PublishStatus: ListingStatusDraft}
+	profileBody := PricingProfileBody{}
+	if body.PricingProfile != nil {
+		profileBody = *body.PricingProfile
+	}
+	profile, profileErr := profileFromBody(platform, profileBody)
+	if profileErr != nil {
+		return nil, false, fmt.Errorf("%w: %v", ErrValidation, profileErr)
+	}
+	purchase, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.PurchaseCost)
+	freight, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.FreightCost)
+	packaging, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.PackagingCost)
+	other, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.OtherCost)
+	pricing, pricingErr := pricingengine.Calculate(pricingengine.CostInput{Currency: "CNY", PurchaseCost: purchase, FreightCost: freight, PackagingCost: packaging, OtherCost: other, TargetProfit: 1000, TargetMarginBPS: 4000, MinimumProfit: 500, MinimumMarginBPS: 2000, Profile: profile})
+	if pricingErr != nil {
+		return nil, false, pricingErr
+	}
+	pricingJSON, _ := json.Marshal(pricing)
+	row := ListingDraft{TenantID: tenantID, CatalogProductID: catalog.ID, Platform: platform, ShopID: body.ShopID, Title: catalog.Title, Description: catalog.Description, Images: imageJSON, SalePrice: moneyFloat(pricing.SuggestedSalePrice), EstimatedProfit: moneyFloat(pricing.EstimatedProfit), EstimatedMargin: bpsFloat(pricing.EstimatedMarginBPS), PricingSnapshot: pricingJSON, PlatformCategory: catalog.Category, PlatformSKUData: skuJSON, PublishStatus: ListingStatusDraft}
 	err = s.DB.WithContext(ctx).Create(&row).Error
 	created := err == nil
 	if err != nil && isUniqueError(err) {
@@ -592,6 +679,42 @@ func (s *Service) UpdateListingDraft(ctx context.Context, tenantID int64, id uui
 				return e
 			}
 			updates["sale_price"] = body.SalePrice
+			catalog, e := s.GetCatalog(ctx, tenantID, row.CatalogProductID)
+			if e != nil {
+				return e
+			}
+			var previous pricingengine.PricingResult
+			if e = json.Unmarshal(row.PricingSnapshot, &previous); e != nil {
+				return fmt.Errorf("%w: invalid pricing snapshot", ErrValidation)
+			}
+			purchase, _, e := pricingengine.MoneyFromLegacyFloat(catalog.PurchaseCost)
+			if e != nil {
+				return e
+			}
+			freight, _, e := pricingengine.MoneyFromLegacyFloat(catalog.FreightCost)
+			if e != nil {
+				return e
+			}
+			packaging, _, e := pricingengine.MoneyFromLegacyFloat(catalog.PackagingCost)
+			if e != nil {
+				return e
+			}
+			other, _, e := pricingengine.MoneyFromLegacyFloat(catalog.OtherCost)
+			if e != nil {
+				return e
+			}
+			sale, _, e := pricingengine.MoneyFromLegacyFloat(body.SalePrice)
+			if e != nil {
+				return e
+			}
+			recalculated, e := pricingengine.Calculate(pricingengine.CostInput{Currency: "CNY", PurchaseCost: purchase, FreightCost: freight, PackagingCost: packaging, OtherCost: other, TargetProfit: 1000, TargetMarginBPS: 4000, MinimumProfit: 500, MinimumMarginBPS: 2000, SalePrice: &sale, Profile: previous.Profile})
+			if e != nil {
+				return e
+			}
+			snapshot, _ := json.Marshal(recalculated)
+			updates["estimated_profit"] = moneyFloat(recalculated.EstimatedProfit)
+			updates["estimated_margin"] = bpsFloat(recalculated.EstimatedMarginBPS)
+			updates["pricing_snapshot"] = snapshot
 		}
 		if body.PlatformCategory != nil {
 			updates["platform_category"] = strings.TrimSpace(*body.PlatformCategory)

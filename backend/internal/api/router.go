@@ -298,7 +298,13 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 		Idempotency: idempotencySvc,
 	}
 	productH := &product.Handler{Svc: productSvc, Files: fileSvc}
-	productFlowSvc := &productflow.Service{DB: dep.DB}
+	productFlowSvc := &productflow.Service{DB: dep.DB, AIExplain: func(ctx context.Context, prompt string) (string, error) {
+		result, err := aiGateway.Chat(ctx, aigate.ChatRequest{Messages: []aigate.Message{{Role: "system", Content: "你是电商选品解释助手。只能解释已给出的结构化规则结果，不得修改分数、金额、利润率或 blocker。只输出 JSON：{\"conclusion\":\"一句话结论\",\"reasons\":[\"推荐原因\"],\"risks\":[\"风险提示\"],\"pricingExplanation\":\"售价解释\",\"nextStep\":\"下一步建议\"}，不得输出 Markdown。"}, {Role: "user", Content: prompt}}, Temperature: 0.1, MaxTokens: 500})
+		if err != nil {
+			return "", err
+		}
+		return result.Content, nil
+	}}
 	productFlowH := &productflow.Handler{Svc: productFlowSvc}
 
 	aiBatchSvc := &aioperationbatch.Service{

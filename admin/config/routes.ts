@@ -55,6 +55,12 @@ export default [
     component: './Commerce/ListingDrafts',
   },
   {
+    path: '/cost-center',
+    name: '成本利润',
+    icon: 'AccountBookOutlined',
+    component: './Commerce/CostCenter',
+  },
+  {
     path: '/system/operation-logs',
     name: '操作日志',
     icon: 'AuditOutlined',

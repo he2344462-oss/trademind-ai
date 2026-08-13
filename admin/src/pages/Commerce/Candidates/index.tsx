@@ -1,23 +1,48 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { Popconfirm, Space, message } from 'antd';
-import { useRef } from 'react';
+import { ModalForm, ProFormDigit, ProFormRadio, ProFormSelect } from '@ant-design/pro-components';
+import { Alert, Descriptions, Divider, Drawer, List, Popconfirm, Progress, Space, Tag, message } from 'antd';
+import { useRef, useState } from 'react';
 import { TmPageContainer, TmProTable as ProTable } from '@/components/ui';
-import { approveCandidate, fetchCandidates, rejectCandidate, watchCandidate, type Candidate } from '@/services/productFlow';
+import { analyzeCandidate, approveCandidate, fetchCandidateAnalysis, fetchCandidates, rejectCandidate, watchCandidate, type AnalysisResult, type AnalyzeCandidateInput, type Candidate, type CandidateAnalysis } from '@/services/productFlow';
 import { imageCell, money, percent, statusTag } from '../shared';
 
+const scoreNames: Record<string, string> = { profit: '利润', data_quality: '数据完整度', supply: '供应', risk: '风险安全度', platform_fit: '平台适配', demand: '需求', competition: '竞争' };
+const recommendationText: Record<string, string> = { strong_recommend: '强烈推荐测试', recommend: '推荐测试', watch: '建议观察', reject: '不建议经营' };
+const yuan = (value?: string) => value === undefined ? '—' : `¥${value}`;
+type Detail = Pick<AnalysisResult, 'cost' | 'score' | 'explanation'> & { analysis: AnalysisResult['analysis'] };
+const normalizeSaved = (value: CandidateAnalysis): Detail => ({ analysis: value, cost: value.costSnapshot, score: { dimensions: value.scoreBreakdown, overallScore: value.overallScore, confidenceScore: value.confidenceScore, recommendation: value.recommendation, reasons: value.reasons || [], warnings: value.warnings || [], blockers: value.blockers || [], missingDimensions: Object.entries(value.scoreBreakdown || {}).filter(([, item]) => !item.reliable).map(([key]) => key) }, explanation: value.explanation });
+
 export default function CandidatesPage() {
-  const actionRef = useRef<ActionType>();
+  const actionRef = useRef<ActionType>(); const [analyzing, setAnalyzing] = useState<Candidate>(); const [detail, setDetail] = useState<Detail>();
   const run = async (op: () => Promise<unknown>, text: string) => { await op(); message.success(text); actionRef.current?.reload(); };
+  const showAnalysis = async (row: Candidate) => { try { setDetail(normalizeSaved(await fetchCandidateAnalysis(row.id))); } catch { message.info('该候选商品尚未分析'); } };
   const columns: ProColumns<Candidate>[] = [
     { title: '商品', dataIndex: 'keyword', render: (_, r) => imageCell(r.sourceProduct?.originalImages?.[0], r.sourceProduct?.originalTitle) },
-    { title: '来源', search: false, render: (_, r) => r.sourceProduct?.sourcePlatform || '—', width: 90 },
-    { title: '采购成本', dataIndex: 'estimatedCost', search: false, render: (_, r) => money(r.estimatedCost), width: 110 },
-    { title: '预计售价', dataIndex: 'estimatedSalePrice', search: false, render: (_, r) => money(r.estimatedSalePrice), width: 110 },
-    { title: '预计利润', dataIndex: 'estimatedProfit', search: false, render: (_, r) => money(r.estimatedProfit), width: 110 },
-    { title: '利润率', dataIndex: 'estimatedMargin', search: false, render: (_, r) => percent(r.estimatedMargin), width: 90 },
-    { title: '潜力评分', dataIndex: 'potentialScore', search: false, renderText: (v) => v ?? '待评分', width: 100 },
-    { title: '状态', dataIndex: 'status', valueType: 'select', valueEnum: { pending: { text: '待分析' }, watch: { text: '观察' }, rejected: { text: '淘汰' }, approved: { text: '已批准' } }, render: (_, r) => statusTag(r.status), width: 100 },
-    { title: '操作', valueType: 'option', render: (_, r) => r.status === 'approved' || r.status === 'rejected' ? [] : [<Popconfirm key="approve" title="批准后将生成正式商品，确定继续？" onConfirm={() => run(() => approveCandidate(r.id), '已批准并生成商品')}><a>批准</a></Popconfirm>, <a key="watch" onClick={() => run(() => watchCandidate(r.id), '已加入观察')}>观察</a>, <Popconfirm key="reject" title="确定淘汰这个候选商品？" onConfirm={() => run(() => rejectCandidate(r.id, '人工淘汰'), '已淘汰')}><a>淘汰</a></Popconfirm>] },
+    { title: '来源', search: false, render: (_, r) => r.sourceProduct?.sourcePlatform || '—', width: 80 },
+    { title: '采购价', search: false, render: (_, r) => money(r.sourceProduct?.sourcePrice), width: 92 },
+    { title: '综合成本', dataIndex: 'estimatedCost', search: false, render: (_, r) => money(r.estimatedCost), width: 100 },
+    { title: '建议售价', dataIndex: 'estimatedSalePrice', search: false, render: (_, r) => money(r.estimatedSalePrice), width: 100 },
+    { title: '预计利润', dataIndex: 'estimatedProfit', search: false, sorter: true, render: (_, r) => money(r.estimatedProfit), width: 100 },
+    { title: '利润率', dataIndex: 'estimatedMargin', search: false, sorter: true, render: (_, r) => percent(r.estimatedMargin), width: 86 },
+    { title: '综合评分', dataIndex: 'potentialScore', search: false, sorter: true, renderText: (v) => v ?? '待分析', width: 92 },
+    { title: '置信度', dataIndex: 'confidenceScore', search: false, render: (_, r) => r.confidenceScore === undefined ? '—' : `${Math.round(r.confidenceScore * 100)}%`, width: 82 },
+    { title: '推荐', search: false, render: (_, r) => r.recommendation ? <Tag>{recommendationText[r.recommendation] || r.recommendation}</Tag> : '—', width: 120 },
+    { title: '状态', dataIndex: 'status', valueType: 'select', valueEnum: { pending: { text: '待分析' }, recommended: { text: '推荐' }, watch: { text: '观察' }, rejected: { text: '淘汰' }, approved: { text: '已批准' } }, render: (_, r) => statusTag(r.status), width: 90 },
+    { title: '操作', valueType: 'option', width: 250, render: (_, r) => [r.status !== 'approved' && <a key="analyze" onClick={() => setAnalyzing(r)}>立即分析</a>, r.analysisVersion ? <a key="detail" onClick={() => showAnalysis(r)}>查看分析</a> : null, r.status !== 'approved' && r.status !== 'rejected' ? <Popconfirm key="approve" title="批准后生成正式商品，确定继续？" onConfirm={() => run(() => approveCandidate(r.id), '已批准并生成商品')}><a>批准</a></Popconfirm> : null, r.status !== 'approved' && r.status !== 'rejected' ? <a key="watch" onClick={() => run(() => watchCandidate(r.id), '已加入观察')}>观察</a> : null, r.status !== 'approved' && r.status !== 'rejected' ? <Popconfirm key="reject" title="确定淘汰这个候选商品？" onConfirm={() => run(() => rejectCandidate(r.id, '人工淘汰'), '已淘汰')}><a>淘汰</a></Popconfirm> : null].filter(Boolean) },
   ];
-  return <TmPageContainer title="AI 候选池" subTitle="Sprint 1 使用人工状态流转，评分字段暂时允许为空"><ProTable<Candidate> key="candidates-table" rowKey="id" actionRef={actionRef} columns={columns} request={async (p) => { const r = await fetchCandidates(p); return { data: r.list, total: r.pagination.total, success: true }; }} /></TmPageContainer>;
+  return <TmPageContainer title="AI 候选池" subTitle="规则引擎负责评分；AI 仅解释结果，需求与竞争数据缺失时保持未知">
+    <ProTable<Candidate> rowKey="id" actionRef={actionRef} columns={columns} request={async (params, sort) => { const field = Object.keys(sort || {})[0]; const order = field ? String(sort[field]) : undefined; const r = await fetchCandidates({ ...params, sortBy: field === 'potentialScore' ? 'overall_score' : field === 'estimatedMargin' ? 'estimated_margin' : field === 'estimatedProfit' ? 'estimated_profit' : undefined, sortOrder: order === 'ascend' ? 'asc' : order === 'descend' ? 'desc' : undefined }); return { data: r.list, total: r.pagination.total, success: true }; }} />
+    <ModalForm<AnalyzeCandidateInput> title="候选商品分析" open={Boolean(analyzing)} onOpenChange={(open) => !open && setAnalyzing(undefined)} initialValues={{ analysisMode: 'rules_only', platform: 'xianyu', packagingCost: 0.5, otherCost: 0.5, expectedReturnLoss: 1.5, targetProfit: 10, targetMarginBps: 4000, minimumProfit: 5, minimumMarginBps: 2000 }} onFinish={async (values) => { if (!analyzing) return false; const result = await analyzeCandidate(analyzing.id, Object.fromEntries(Object.entries(values).map(([key, value]) => [key, typeof value === 'number' && !key.endsWith('Bps') ? value.toFixed(2) : value])) as AnalyzeCandidateInput); setDetail(result); setAnalyzing(undefined); actionRef.current?.reload(); message.success('分析完成'); return true; }}>
+      <ProFormRadio.Group name="analysisMode" label="分析模式" options={[{ label: '仅规则分析', value: 'rules_only' }, { label: 'AI 深度解释（失败自动降级）', value: 'ai_explanation' }]} /><ProFormSelect name="platform" label="目标平台" options={[{ label: '闲鱼', value: 'xianyu' }, { label: '淘宝', value: 'taobao' }]} />
+      <ProFormDigit name="packagingCost" label="包装成本（元）" min={0} fieldProps={{ precision: 2 }} /><ProFormDigit name="otherCost" label="其他固定成本（元）" min={0} fieldProps={{ precision: 2 }} /><ProFormDigit name="expectedReturnLoss" label="售后损耗预留（元）" min={0} fieldProps={{ precision: 2 }} /><ProFormDigit name="salePrice" label="指定售价（可选）" min={0} fieldProps={{ precision: 2 }} /><ProFormDigit name="targetProfit" label="目标利润（元）" min={0} fieldProps={{ precision: 2 }} /><ProFormDigit name="targetMarginBps" label="目标利润率（基点，4000=40%）" min={0} max={9900} /><ProFormDigit name="minimumProfit" label="最低利润（元）" min={0} fieldProps={{ precision: 2 }} /><ProFormDigit name="minimumMarginBps" label="最低利润率（基点）" min={0} max={9900} />
+    </ModalForm>
+    <Drawer title="候选商品分析" width={720} open={Boolean(detail)} onClose={() => setDetail(undefined)}>{detail && <>
+      <Alert type={detail.score.blockers.length ? 'error' : detail.score.recommendation === 'watch' ? 'warning' : 'success'} showIcon message={`${recommendationText[detail.score.recommendation] || detail.score.recommendation} · 综合评分 ${detail.score.overallScore}`} description={detail.explanation.conclusion} />
+      <Divider orientation="left">成本拆解</Divider><Descriptions column={2} size="small" items={[{ key: 'base', label: '采购', children: yuan(detail.cost.baseCost) }, { key: 'fixed', label: '固定成本合计', children: yuan(detail.cost.totalFixedCost) }, { key: 'platform', label: '平台费用', children: yuan(detail.cost.estimatedPlatformFee) }, { key: 'payment', label: '支付费用', children: yuan(detail.cost.estimatedPaymentFee) }, { key: 'after', label: '售后预留', children: yuan(detail.cost.estimatedAfterSaleLoss) }, { key: 'total', label: '综合成本', children: yuan(detail.cost.estimatedTotalCost) }, { key: 'break', label: '保本价', children: yuan(detail.cost.breakEvenPrice) }, { key: 'minimum', label: '最低售价', children: yuan(detail.cost.minimumSalePrice) }, { key: 'suggested', label: '建议售价', children: yuan(detail.cost.suggestedSalePrice) }, { key: 'profit', label: '预计利润', children: yuan(detail.cost.estimatedProfit) }, { key: 'margin', label: '利润率', children: `${(detail.cost.estimatedMarginBps / 100).toFixed(2)}%` }, { key: 'markup', label: '成本加成率', children: `${(detail.cost.markupRateBps / 100).toFixed(2)}%` }]} />
+      <Divider orientation="left">规则评分与置信度</Divider><Space direction="vertical" style={{ width: '100%' }}>{Object.entries(detail.score.dimensions).map(([key, item]) => <div key={key}><Space style={{ justifyContent: 'space-between', width: '100%' }}><span>{scoreNames[key] || key}</span><span>{item.reliable && item.score !== undefined ? item.score : '暂无可靠数据'}</span></Space>{item.reliable && item.score !== undefined ? <Progress percent={item.score} showInfo={false} size="small" /> : null}</div>)}<div>评分置信度 <Progress percent={detail.score.confidenceScore} /></div></Space>
+      <Alert style={{ marginTop: 16 }} type="info" message="数据边界" description="需求评分和竞争评分在没有真实销量、搜索量或竞品数据时保持 unknown，不参与综合分；置信度会相应下降。" />
+      <Divider orientation="left">推荐依据</Divider><List size="small" dataSource={detail.score.reasons} renderItem={(item) => <List.Item>{item}</List.Item>} />
+      {detail.score.warnings.length ? <><Divider orientation="left">风险提示</Divider><List size="small" dataSource={detail.score.warnings} renderItem={(item) => <List.Item><Tag color="orange">提示</Tag>{item}</List.Item>} /></> : null}{detail.score.blockers.length ? <><Divider orientation="left">阻断项</Divider><List size="small" dataSource={detail.score.blockers} renderItem={(item) => <List.Item><Tag color="red">Blocker</Tag>{item}</List.Item>} /></> : null}
+    </>}</Drawer>
+  </TmPageContainer>;
 }

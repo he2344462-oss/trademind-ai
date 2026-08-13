@@ -27,9 +27,38 @@ type TransitionCandidateBody struct {
 	RejectionReason string `json:"rejectionReason"`
 }
 
+type AnalyzeCandidateBody struct {
+	AnalysisMode       string             `json:"analysisMode"`
+	Platform           string             `json:"platform"`
+	PackagingCost      string             `json:"packagingCost"`
+	OtherCost          string             `json:"otherCost"`
+	ExpectedReturnLoss string             `json:"expectedReturnLoss"`
+	AfterSaleReserve   string             `json:"afterSaleReserve"`
+	DiscountBuffer     string             `json:"discountBuffer"`
+	CouponBuffer       string             `json:"couponBuffer"`
+	TargetProfit       string             `json:"targetProfit"`
+	TargetMarginBPS    int64              `json:"targetMarginBps"`
+	MinimumProfit      string             `json:"minimumProfit"`
+	MinimumMarginBPS   int64              `json:"minimumMarginBps"`
+	SalePrice          string             `json:"salePrice"`
+	PricingProfile     PricingProfileBody `json:"pricingProfile"`
+}
+
+type PricingProfileBody struct {
+	Code             string `json:"code"`
+	PlatformFeeBPS   int64  `json:"platformFeeBps"`
+	PlatformFeeFixed string `json:"platformFeeFixed"`
+	PaymentFeeBPS    int64  `json:"paymentFeeBps"`
+	PaymentFeeFixed  string `json:"paymentFeeFixed"`
+	ReturnReserveBPS int64  `json:"returnReserveBps"`
+	OtherBPS         int64  `json:"otherBps"`
+	OtherFixed       string `json:"otherFixed"`
+}
+
 type CreateListingDraftBody struct {
-	Platform string     `json:"platform" binding:"required"`
-	ShopID   *uuid.UUID `json:"shopId"`
+	Platform       string              `json:"platform" binding:"required"`
+	ShopID         *uuid.UUID          `json:"shopId"`
+	PricingProfile *PricingProfileBody `json:"pricingProfile"`
 }
 
 type UpdateListingDraftBody struct {
@@ -49,6 +78,8 @@ type ListQuery struct {
 	Platform  string
 	Keyword   string
 	CatalogID *uuid.UUID
+	SortBy    string
+	SortOrder string
 }
 
 type PageResult[T any] struct {
@@ -63,4 +94,13 @@ type ApproveResult struct {
 	Candidate Candidate `json:"candidate"`
 	Catalog   any       `json:"catalogProduct"`
 	Created   bool      `json:"created"`
+}
+
+type CostCenterSummary struct {
+	ProductCount     int64 `json:"productCount"`
+	AverageMarginBPS int64 `json:"averageMarginBps"`
+	LowProfitCount   int64 `json:"lowProfitCount"`
+	HighProfitCount  int64 `json:"highProfitCount"`
+	CostAnomalyCount int64 `json:"costAnomalyCount"`
+	Products         []any `json:"products"`
 }

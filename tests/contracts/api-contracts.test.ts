@@ -13,8 +13,11 @@ describe('TradeMind API contract registry', () => {
   it('covers the core Admin product publishing and readiness endpoints', () => {
     const routes = new Set(contracts.endpoints.map(routeKey));
 
-    expect(routes).toEqual(
-      new Set([
+    expect(routes).toEqual(new Set([
+        'POST /api/v1/candidates/:id/analyze',
+        'GET /api/v1/candidates/:id/analysis',
+        'GET /api/v1/candidates/:id/analyses',
+        'GET /api/v1/cost-center',
         'GET /api/v1/auth/profile',
         'GET /api/v1/image/providers',
         'GET /api/v1/products/:id',
@@ -24,8 +27,7 @@ describe('TradeMind API contract registry', () => {
         'GET /api/v1/products/:id/publish-targets',
         'POST /api/v1/products/:id/platform-configs/douyin_shop/create-draft',
         'POST /api/v1/products/:id/publish',
-      ]),
-    );
+      ]));
   });
 
   it('defines payload/query contracts for state-changing publish APIs', () => {
@@ -39,7 +41,7 @@ describe('TradeMind API contract registry', () => {
   });
 
   it('marks every protected Admin endpoint as authenticated', () => {
-    expect(contracts.endpoints).toHaveLength(9);
+    expect(contracts.endpoints).toHaveLength(13);
     expect(contracts.endpoints.every((endpoint) => endpoint.auth === true)).toBe(true);
   });
 });

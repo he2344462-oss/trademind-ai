@@ -2,6 +2,8 @@
 
 更新时间：2026-08-13
 
+2026-08-13 Sprint 2 新增精确金额 Cost/Profit Engine、可配置且默认未配置的 Platform Pricing Profile、SKU 级利润、确定性 Selection Score Engine、动态权重/置信度/Blocker、不可变 `candidate_analyses` 历史快照，以及 Admin 候选分析与成本利润中心。AI 仅作为可选解释层，失败时使用规则模板；真实需求和竞争数据继续显示 unknown。本阶段仍不连接或发布到闲鱼、淘宝。
+
 2026-08-13 进入 Sprint 1 商品业务模型重构：新增 `source_products`、`candidates`、`listing_drafts`，并以兼容字段将旧 `products` 定义为 Catalog Product 实现基础。Collector 成功结果先幂等写入货源池，再保留旧商品草稿写入与 `result_product_id`；新 API 和 Admin 页面支持人工完成货源 → 候选 → 批准 → 商品库 → 闲鱼/淘宝草稿闭环。本阶段没有启用 AI 自动决策或任何真实平台发布。
 
 2026-08-12 完成运行基线与 Collector 安全加固：统一 Node.js 24 LTS、pnpm 9.15.4、Go 1.25.x 的文档、CI 与 Docker 约定；Compose PostgreSQL 与后端复用同一组 `DB_*` 凭据；本地基础设施和 Collector 发布端口仅绑定回环地址；Backend→Collector `/v1/*` 使用至少 32 字符的内部 Token 鉴权，并限制 Collector JSON 请求体大小。

@@ -72,6 +72,9 @@ type Candidate struct {
 	RiskScore          *float64      `gorm:"type:numeric(8,4)" json:"riskScore,omitempty"`
 	DataQualityScore   *float64      `gorm:"type:numeric(8,4)" json:"dataQualityScore,omitempty"`
 	AIScore            *float64      `gorm:"type:numeric(8,4)" json:"aiScore,omitempty"`
+	ConfidenceScore    *float64      `gorm:"type:numeric(8,4)" json:"confidenceScore,omitempty"`
+	AnalysisVersion    int           `gorm:"not null;default:0" json:"analysisVersion"`
+	AnalyzedAt         *time.Time    `gorm:"index" json:"analyzedAt,omitempty"`
 	Recommendation     string        `gorm:"size:64" json:"recommendation,omitempty"`
 	AnalysisSummary    string        `gorm:"type:text" json:"analysisSummary,omitempty"`
 	RejectionReason    string        `gorm:"type:text" json:"rejectionReason,omitempty"`
@@ -84,6 +87,30 @@ type Candidate struct {
 
 func (Candidate) TableName() string { return "candidates" }
 
+// CandidateAnalysis is an immutable, replayable decision snapshot.
+type CandidateAnalysis struct {
+	model.HardDeleteBase
+	TenantID        int64          `gorm:"not null;default:0;index" json:"tenantId"`
+	CandidateID     uuid.UUID      `gorm:"type:char(36);not null;index;uniqueIndex:idx_candidate_analysis_version,priority:1" json:"candidateId"`
+	AnalysisVersion int            `gorm:"not null;uniqueIndex:idx_candidate_analysis_version,priority:2" json:"analysisVersion"`
+	AnalysisMode    string         `gorm:"size:32;not null;index" json:"analysisMode"`
+	Platform        string         `gorm:"size:64;not null;index" json:"platform"`
+	InputSnapshot   datatypes.JSON `gorm:"type:jsonb;not null" json:"inputSnapshot"`
+	CostSnapshot    datatypes.JSON `gorm:"type:jsonb;not null" json:"costSnapshot"`
+	SKUSnapshot     datatypes.JSON `gorm:"type:jsonb;not null" json:"skuSnapshot"`
+	ScoreBreakdown  datatypes.JSON `gorm:"type:jsonb;not null" json:"scoreBreakdown"`
+	OverallScore    int64          `gorm:"not null;index" json:"overallScore"`
+	ConfidenceScore int64          `gorm:"not null;index" json:"confidenceScore"`
+	Recommendation  string         `gorm:"size:64;not null;index" json:"recommendation"`
+	Reasons         datatypes.JSON `gorm:"type:jsonb;not null" json:"reasons"`
+	Warnings        datatypes.JSON `gorm:"type:jsonb;not null" json:"warnings"`
+	Blockers        datatypes.JSON `gorm:"type:jsonb;not null" json:"blockers"`
+	Explanation     datatypes.JSON `gorm:"type:jsonb;not null" json:"explanation"`
+	AIStatus        string         `gorm:"size:32;not null;index" json:"aiStatus"`
+}
+
+func (CandidateAnalysis) TableName() string { return "candidate_analyses" }
+
 // ListingDraft is a platform-specific, non-published sales version of a catalog product.
 type ListingDraft struct {
 	model.Base
@@ -95,6 +122,9 @@ type ListingDraft struct {
 	Description       string         `gorm:"type:text" json:"description,omitempty"`
 	Images            datatypes.JSON `gorm:"type:jsonb" json:"images,omitempty"`
 	SalePrice         *float64       `gorm:"type:numeric(18,2)" json:"salePrice,omitempty"`
+	EstimatedProfit   *float64       `gorm:"type:numeric(18,2)" json:"estimatedProfit,omitempty"`
+	EstimatedMargin   *float64       `gorm:"type:numeric(8,4)" json:"estimatedMargin,omitempty"`
+	PricingSnapshot   datatypes.JSON `gorm:"type:jsonb" json:"pricingSnapshot,omitempty"`
 	PlatformCategory  string         `gorm:"size:256;index" json:"platformCategory,omitempty"`
 	PlatformSKUData   datatypes.JSON `gorm:"type:jsonb" json:"platformSkuData,omitempty"`
 	PublishStatus     string         `gorm:"size:32;index;not null;default:draft" json:"publishStatus"`

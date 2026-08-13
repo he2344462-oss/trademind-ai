@@ -44,13 +44,85 @@ func parseID(c *gin.Context) (uuid.UUID, bool) {
 func pageQuery(c *gin.Context) ListQuery {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-	q := ListQuery{Page: page, PageSize: size, Status: strings.TrimSpace(c.Query("status")), Platform: strings.TrimSpace(c.Query("platform")), Keyword: strings.TrimSpace(c.Query("keyword"))}
+	q := ListQuery{Page: page, PageSize: size, Status: strings.TrimSpace(c.Query("status")), Platform: strings.TrimSpace(c.Query("platform")), Keyword: strings.TrimSpace(c.Query("keyword")), SortBy: strings.TrimSpace(c.Query("sortBy")), SortOrder: strings.TrimSpace(c.Query("sortOrder"))}
 	if v := strings.TrimSpace(c.Query("catalogProductId")); v != "" {
 		if id, e := uuid.Parse(v); e == nil {
 			q.CatalogID = &id
 		}
 	}
 	return q
+}
+
+func (h *Handler) AnalyzeCandidate(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body AnalyzeCandidateBody
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&body); err != nil {
+			response.Fail(c, 400, response.CodeBadRequest, "invalid json body")
+			return
+		}
+	}
+	out, err := h.Svc.AnalyzeCandidate(c.Request.Context(), tenant, id, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h *Handler) LatestAnalysis(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.LatestAnalysis(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ListAnalyses(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListAnalyses(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) CostCenter(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.CostCenter(c.Request.Context(), tenant)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
 }
 func pageData[T any](v PageResult[T]) gin.H {
 	return gin.H{"list": v.List, "pagination": gin.H{"page": v.Page, "pageSize": v.PageSize, "total": v.Total, "totalPages": v.TotalPages}}

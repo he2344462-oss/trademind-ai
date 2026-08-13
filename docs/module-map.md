@@ -56,6 +56,10 @@
 - 细节放入 `docs/`，并在 `docs/README.md` 增加入口。
 - 新增 AI 规则或关联说明时，同步 `AGENTS.md`、`docs/ai-workflow.md` 和 `.cursor/rules/README.md`。
 - 重复出现的坑、质量门槛或工具协作经验，应写回对应 pitfalls、模块文档、`docs/PROGRESS.md` 或 AI 规则，避免只停留在单次对话。
+
+## Sprint 2 成本利润与选品评分
+
+相关实现包括 `backend/internal/modules/productflow/pricingengine`、`selectionengine`、`candidate_analyses`、Candidate 分析 API、Catalog 成本快照、Listing Pricing Profile、Admin Candidates 和 CostCenter。确定性规则负责金额与分数，AI 只解释且必须可降级。
 # 预生产基础设施
 
 Changes to `.env.example`, `deploy/preproduction/**`, or `deploy/scripts/*preproduction*` must be checked together with `docs/P10_PREPRODUCTION_ARCHITECTURE.md`, `docs/env.md`, `docs/docker-deployment.md`, workflow configuration, sensitive-diff checks, and the manual acceptance checklist. Production resources and credentials are outside the default writable scope.

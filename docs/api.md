@@ -530,6 +530,20 @@ Current code-level P7 endpoints affected: product and order list APIs reject exc
 
 - 后端：handler、service、DTO、权限和错误处理一起检查。
 - 前端：`admin/src/services`、`admin/src/types`、相关页面字段和状态映射一起检查。
+## Sprint 2 成本利润与选品分析
+
+金额输入使用两位小数字符串（如 `"12.80"`），金额输出同样是字符串；费率和利润率使用 basis points（`4000 = 40%`）。默认平台费用全部为 0 且 `configured=false`，不代表平台官方费率。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/candidates/:id/analyze` | 执行成本和规则评分，可选 AI 解释，并保存不可变分析快照 |
+| `GET` | `/api/v1/candidates/:id/analysis` | 获取最新分析快照 |
+| `GET` | `/api/v1/candidates/:id/analyses` | 获取历史分析快照，按版本倒序 |
+| `GET` | `/api/v1/cost-center` | 获取正式商品成本利润汇总及异常计数 |
+| `POST` | `/api/v1/catalog-products/:id/listing-drafts` | 可传 `pricingProfile` 分别计算平台建议售价和预计利润；仅创建草稿 |
+
+综合分只对可靠维度重新归一化；当前 `demand` 与 `competition` 是 unknown。Blocker 强制输出 `reject`。AI 失败或未配置时使用规则模板，不修改金额、分数或 blocker。
+
 - 文档：同步本文档、`docs/module-map.md` 和必要的 README 能力描述。
 - 安全：涉及密钥、Token、密码、Cookie 时同步 `SECURITY.md`。
 - 任务：耗时接口必须使用任务状态，不应在 HTTP 请求中长时间阻塞。

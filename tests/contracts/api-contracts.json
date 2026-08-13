@@ -5,6 +5,10 @@
     "errorCodeRule": "code must be non-zero for business errors"
   },
   "endpoints": [
+    { "method": "POST", "path": "/api/v1/candidates/:id/analyze", "auth": true, "responseData": "CandidateAnalysisResult" },
+    { "method": "GET", "path": "/api/v1/candidates/:id/analysis", "auth": true, "responseData": "CandidateAnalysis" },
+    { "method": "GET", "path": "/api/v1/candidates/:id/analyses", "auth": true, "responseData": "CandidateAnalysisList" },
+    { "method": "GET", "path": "/api/v1/cost-center", "auth": true, "responseData": "CostCenterSummary" },
     { "method": "GET", "path": "/api/v1/auth/profile", "auth": true, "responseData": "AdminProfile" },
     { "method": "GET", "path": "/api/v1/image/providers", "auth": true, "responseData": "ImageProviderList" },
     { "method": "GET", "path": "/api/v1/products/:id", "auth": true, "responseData": "ProductDetail" },

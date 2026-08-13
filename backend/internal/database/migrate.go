@@ -133,6 +133,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&product.ProductImageApplication{},
 		&productflow.SourceProduct{},
 		&productflow.Candidate{},
+		&productflow.CandidateAnalysis{},
 		&productflow.ListingDraft{},
 		&productpublish.ProductPublishTask{},
 		&productpublish.ProductPublishBatch{},

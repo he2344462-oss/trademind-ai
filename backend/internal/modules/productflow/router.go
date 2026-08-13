@@ -12,6 +12,9 @@ func Register(g *gin.RouterGroup, h *Handler) {
 	g.POST("/source-products/:id/candidate", h.CreateCandidate)
 	g.GET("/candidates", h.ListCandidates)
 	g.GET("/candidates/:id", h.GetCandidate)
+	g.POST("/candidates/:id/analyze", h.AnalyzeCandidate)
+	g.GET("/candidates/:id/analysis", h.LatestAnalysis)
+	g.GET("/candidates/:id/analyses", h.ListAnalyses)
 	g.POST("/candidates/:id/approve", h.ApproveCandidate)
 	g.POST("/candidates/:id/reject", h.RejectCandidate)
 	g.POST("/candidates/:id/watch", h.WatchCandidate)
@@ -22,4 +25,5 @@ func Register(g *gin.RouterGroup, h *Handler) {
 	g.GET("/listing-drafts/:id", h.GetListingDraft)
 	g.PUT("/listing-drafts/:id", h.UpdateListingDraft)
 	g.DELETE("/listing-drafts/:id", h.DeleteListingDraft)
+	g.GET("/cost-center", h.CostCenter)
 }
