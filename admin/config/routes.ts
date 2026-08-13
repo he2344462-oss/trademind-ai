@@ -45,6 +45,8 @@ export default [
   },
   { path: '/recommendations', name: 'AI 推荐榜', icon: 'TrophyOutlined', component: './Commerce/Recommendations' },
   { path: '/analysis-batches', name: '分析任务', icon: 'ProfileOutlined', component: './Commerce/AnalysisBatches' },
+  { path: '/data-imports', name: '真实数据导入', icon: 'ImportOutlined', component: './Commerce/DataImports' },
+  { path: '/calibration', name: '选品效果', icon: 'AimOutlined', component: './Commerce/Calibration' },
   {
     path: '/catalog-products',
     name: '商品库',
@@ -557,6 +559,16 @@ export default [
         path: '/settings/integrations',
         name: '第三方集成总览',
         component: './Settings/Integrations',
+      },
+      {
+        path: '/settings/market-providers',
+        name: 'Market Providers',
+        component: './Settings/MarketProviders',
+      },
+      {
+        path: '/settings/selection-configs',
+        name: '选品规则版本',
+        component: './Settings/SelectionConfigs',
       },
       {
         path: '/settings/config-status',

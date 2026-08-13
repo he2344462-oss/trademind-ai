@@ -576,3 +576,13 @@ Resolution failures are non-success ACKs and may use codes such as `DOUYIN_WEBHO
 市场信号新增 `POST /api/v1/market-signals/import` 与 `GET /api/v1/market-signal-providers/status`；销售表现新增 `POST /api/v1/performance/import`、`GET /api/v1/performance`、`GET /api/v1/performance/summary` 和 `GET /api/v1/evaluation/selection-performance`。费用模型新增 `copy` 与 `default` 操作，并保存不可变修订。
 
 来源等级为 `official`、`authorized`、`public`、`manual`、`csv_import`、`fixture`。fixture 永不参与正式 Demand/Competition 聚合；过期信号不参与，陈旧信号降低可信度。当前没有配置官方或授权的闲鱼/淘宝数据接口，Provider 状态返回 `not_configured`，不会执行非授权抓取。
+
+## Sprint 5 真实数据与规则校准
+
+Provider 配置使用 `/api/v1/market-signal-provider-configs` 管理，支持创建、更新、启用、禁用和 `/:id/health-check`。普通配置 JSON 禁止包含 secret、token、password 或 API key；`credentialReference` 仅接受 `env:VARIABLE_NAME`，读取响应只返回 `credentialConfigured` 与掩码提示，不返回完整凭据或引用。当前正式网络 Provider 仍未配置，官方/授权占位适配器保持 `not_configured`。
+
+Market Signal 与 Performance CSV 分别提供 `/api/v1/imports/market-signals/{preview,confirm}` 和 `/api/v1/imports/performance/{preview,confirm}`。请求包含 UTF-8 `csv` 文本和源列到系统字段的 `mapping`；限制 2 MB、5000 行、4096 字符单元格，并逐行报告错误。文本字段拒绝 `= + - @` 公式前缀，确认导入只写入有效行，来源固定标记为 `csv_import`。
+
+`GET /api/v1/calibration/report` 默认排除 fixture；只有显式 `includeTestData=true` 才纳入测试数据。报告包含 Recommendation Group、Score Bucket、维度观察、规则效果、Suggestion Only 和 Learning Readiness。样本不足统一标记 `insufficientSample`，报告不自动修改任何权重、阈值或 Blocker。
+
+Selection Config 使用 `/api/v1/selection-configs` 创建 `draft`，再经 `/:id/review` 和人工 `/:id/activate` 激活。新分析保存 `selectionConfigId` 和 `selectionConfigVersion`；历史分析保持原版本，不随新配置重新解释。

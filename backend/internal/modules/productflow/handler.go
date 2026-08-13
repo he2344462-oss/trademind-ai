@@ -701,6 +701,206 @@ func (h *Handler) SelectionPerformance(c *gin.Context) {
 	}
 	response.OK(c, out)
 }
+
+func (h *Handler) PreviewMarketSignalCSV(c *gin.Context) { h.handleCSVImport(c, "market", false) }
+func (h *Handler) ConfirmMarketSignalCSV(c *gin.Context) { h.handleCSVImport(c, "market", true) }
+func (h *Handler) PreviewPerformanceCSV(c *gin.Context)  { h.handleCSVImport(c, "performance", false) }
+func (h *Handler) ConfirmPerformanceCSV(c *gin.Context)  { h.handleCSVImport(c, "performance", true) }
+func (h *Handler) handleCSVImport(c *gin.Context, kind string, confirm bool) {
+	if confirm && !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body CSVImportRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid CSV import request")
+		return
+	}
+	var out any
+	var err error
+	if kind == "market" {
+		if confirm {
+			out, err = h.Svc.ImportMappedMarketSignalCSV(c.Request.Context(), tenant, body)
+		} else {
+			out, err = h.Svc.PreviewMarketSignalCSV(c.Request.Context(), tenant, body)
+		}
+	} else {
+		if confirm {
+			out, err = h.Svc.ImportMappedPerformanceCSV(c.Request.Context(), tenant, body)
+		} else {
+			out, err = h.Svc.PreviewPerformanceCSV(c.Request.Context(), tenant, body)
+		}
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h *Handler) ListMarketProviderConfigs(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListMarketProviderConfigs(c.Request.Context(), tenant)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) CreateMarketProviderConfig(c *gin.Context) { h.saveMarketProviderConfig(c, false) }
+func (h *Handler) UpdateMarketProviderConfig(c *gin.Context) { h.saveMarketProviderConfig(c, true) }
+func (h *Handler) saveMarketProviderConfig(c *gin.Context, update bool) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body MarketProviderConfigInput
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid provider config")
+		return
+	}
+	var id *uuid.UUID
+	if update {
+		parsed, valid := parseID(c)
+		if !valid {
+			return
+		}
+		id = &parsed
+	}
+	out, err := h.Svc.SaveMarketProviderConfig(c.Request.Context(), tenant, id, body)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) SetMarketProviderEnabled(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	action := c.Param("action")
+	if action != "enable" && action != "disable" {
+		response.Fail(c, 400, response.CodeBadRequest, "unsupported provider action")
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.SetMarketProviderEnabled(c.Request.Context(), tenant, id, action == "enable")
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) HealthCheckMarketProvider(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.HealthCheckMarketProvider(c.Request.Context(), tenant, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h *Handler) CalibrationReport(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.CalibrationReport(c.Request.Context(), tenant, c.Query("includeTestData") == "true")
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ListSelectionConfigs(c *gin.Context) {
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	out, err := h.Svc.ListSelectionConfigs(c.Request.Context(), tenant)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"list": out})
+}
+func (h *Handler) CreateSelectionConfig(c *gin.Context) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	var body SelectionConfigInput
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Fail(c, 400, response.CodeBadRequest, "invalid selection config")
+		return
+	}
+	out, err := h.Svc.CreateSelectionConfigDraft(c.Request.Context(), tenant, body, actorID(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+func (h *Handler) ReviewSelectionConfig(c *gin.Context)   { h.transitionSelectionConfig(c, "review") }
+func (h *Handler) ActivateSelectionConfig(c *gin.Context) { h.transitionSelectionConfig(c, "activate") }
+func (h *Handler) transitionSelectionConfig(c *gin.Context, action string) {
+	if !h.write(c) {
+		return
+	}
+	tenant, ok := h.tenant(c)
+	if !ok {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var out *SelectionConfig
+	var err error
+	if action == "review" {
+		out, err = h.Svc.ReviewSelectionConfig(c.Request.Context(), tenant, id)
+	} else {
+		out, err = h.Svc.ActivateSelectionConfig(c.Request.Context(), tenant, id)
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if h.Svc.OpLog != nil {
+		_ = h.Svc.OpLog.Write(c, operationlog.WriteOpts{TenantID: tenant, AdminUserID: actorID(c), Action: "selection_config." + action, Resource: "selection_config", ResourceID: id.String(), Status: "success", Message: "人工选品规则版本操作"})
+	}
+	response.OK(c, out)
+}
 func (h *Handler) ListPricingProfiles(c *gin.Context) {
 	tenant, ok := h.tenant(c)
 	if !ok {

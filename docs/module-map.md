@@ -74,3 +74,9 @@ Changes under `backend/internal/modules/credentialp10`, `inventoryreadp10`, or `
 # Sprint 4 模块补充
 
 批任务控制继续位于 `productflow/batch_control.go`，Worker 不复制领域状态机。`market_signal.go` 负责合法来源 Provider 边界、导入、新鲜度和聚合；`performance.go` 负责用户授权销售表现导入与预测结果评估。新表由 `backend/internal/database/migrate.go` 正式迁移。Admin 对应 `Commerce/AnalysisBatches`、选品工作台、主运营首页与平台费用页面。
+
+# Sprint 5 有限领域拆分
+
+ProductFlow 外部 API 保持兼容，内部新增三个小边界：`credentialstore` 负责环境变量/KMS 可替换的凭据引用；`importcsv` 负责 Market 与 Performance 共用的安全 CSV 解析；`calibration` 负责不依赖数据库的 Recommendation、Score Bucket、维度、规则效果和 Readiness 计算。主包中的 `provider_config.go`、`selection_config.go`、`calibration_service.go` 继续承担应用服务与持久化编排，未重写既有 ProductFlow。
+
+Admin 对应 `Commerce/DataImports`、`Commerce/Calibration`、`Settings/MarketProviders` 和 `Settings/SelectionConfigs`。所有真实覆盖统计默认排除 fixture；Selection Config 激活必须写 Operation Log，新旧 Candidate Analysis 通过版本字段隔离。

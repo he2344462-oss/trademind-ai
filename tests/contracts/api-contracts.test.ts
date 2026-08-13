@@ -29,6 +29,15 @@ describe('TradeMind API contract registry', () => {
         'POST /api/v1/performance/import',
         'GET /api/v1/performance/summary',
         'GET /api/v1/evaluation/selection-performance',
+        'POST /api/v1/imports/market-signals/preview',
+        'POST /api/v1/imports/market-signals/confirm',
+        'POST /api/v1/imports/performance/preview',
+        'POST /api/v1/imports/performance/confirm',
+        'GET /api/v1/market-signal-provider-configs',
+        'POST /api/v1/market-signal-provider-configs/:id/health-check',
+        'GET /api/v1/calibration/report',
+        'GET /api/v1/selection-configs',
+        'POST /api/v1/selection-configs/:id/activate',
         'GET /api/v1/auth/profile',
         'GET /api/v1/image/providers',
         'GET /api/v1/products/:id',
@@ -52,7 +61,7 @@ describe('TradeMind API contract registry', () => {
   });
 
   it('marks every protected Admin endpoint as authenticated', () => {
-    expect(contracts.endpoints).toHaveLength(24);
+    expect(contracts.endpoints).toHaveLength(33);
     expect(contracts.endpoints.every((endpoint) => endpoint.auth === true)).toBe(true);
   });
 });

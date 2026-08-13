@@ -160,18 +160,23 @@ type CostCenterSummary struct {
 }
 
 type SelectionDashboard struct {
-	TodaySources         int64                    `json:"todaySources"`
-	PendingCandidates    int64                    `json:"pendingCandidates"`
-	TodayAnalyzed        int64                    `json:"todayAnalyzed"`
-	StrongRecommend      int64                    `json:"strongRecommend"`
-	Recommend            int64                    `json:"recommend"`
-	Watch                int64                    `json:"watch"`
-	Reject               int64                    `json:"reject"`
-	AverageMarginBPS     int64                    `json:"averageMarginBps"`
-	RunningBatches       []CandidateAnalysisBatch `json:"runningBatches"`
-	PausedBatches        int64                    `json:"pausedBatches"`
-	FailedBatches        int64                    `json:"failedBatches"`
-	MarketCoverageBPS    int64                    `json:"marketCoverageBps"`
-	PerformanceUpdatedAt *time.Time               `json:"performanceUpdatedAt,omitempty"`
-	OperationalSummary   string                   `json:"operationalSummary"`
+	TodaySources               int64                    `json:"todaySources"`
+	PendingCandidates          int64                    `json:"pendingCandidates"`
+	TodayAnalyzed              int64                    `json:"todayAnalyzed"`
+	StrongRecommend            int64                    `json:"strongRecommend"`
+	Recommend                  int64                    `json:"recommend"`
+	Watch                      int64                    `json:"watch"`
+	Reject                     int64                    `json:"reject"`
+	AverageMarginBPS           int64                    `json:"averageMarginBps"`
+	RunningBatches             []CandidateAnalysisBatch `json:"runningBatches"`
+	PausedBatches              int64                    `json:"pausedBatches"`
+	FailedBatches              int64                    `json:"failedBatches"`
+	MarketCoverageBPS          int64                    `json:"marketCoverageBps"`
+	RealMarketCoverageBPS      int64                    `json:"realMarketCoverageBps"`
+	RealPerformanceCoverageBPS int64                    `json:"realPerformanceCoverageBps"`
+	CalibrationSampleCount     int64                    `json:"calibrationSampleCount"`
+	CalibrationReadiness       string                   `json:"calibrationReadiness"`
+	SelectionConfigVersion     string                   `json:"selectionConfigVersion"`
+	PerformanceUpdatedAt       *time.Time               `json:"performanceUpdatedAt,omitempty"`
+	OperationalSummary         string                   `json:"operationalSummary"`
 }

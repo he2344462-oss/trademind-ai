@@ -109,29 +109,31 @@ func (Candidate) TableName() string { return "candidates" }
 // CandidateAnalysis is an immutable, replayable decision snapshot.
 type CandidateAnalysis struct {
 	model.HardDeleteBase
-	TenantID              int64          `gorm:"not null;default:0;index" json:"tenantId"`
-	CandidateID           uuid.UUID      `gorm:"type:char(36);not null;index;uniqueIndex:idx_candidate_analysis_version,priority:1" json:"candidateId"`
-	AnalysisVersion       int            `gorm:"not null;uniqueIndex:idx_candidate_analysis_version,priority:2" json:"analysisVersion"`
-	AnalysisMode          string         `gorm:"size:32;not null;index" json:"analysisMode"`
-	Platform              string         `gorm:"size:64;not null;index" json:"platform"`
-	InputSnapshot         datatypes.JSON `gorm:"type:jsonb;not null" json:"inputSnapshot"`
-	CostSnapshot          datatypes.JSON `gorm:"type:jsonb;not null" json:"costSnapshot"`
-	SKUSnapshot           datatypes.JSON `gorm:"type:jsonb;not null" json:"skuSnapshot"`
-	ScoreBreakdown        datatypes.JSON `gorm:"type:jsonb;not null" json:"scoreBreakdown"`
-	OverallScore          int64          `gorm:"not null;index" json:"overallScore"`
-	ConfidenceScore       int64          `gorm:"not null;index" json:"confidenceScore"`
-	Recommendation        string         `gorm:"size:64;not null;index" json:"recommendation"`
-	Reasons               datatypes.JSON `gorm:"type:jsonb;not null" json:"reasons"`
-	Warnings              datatypes.JSON `gorm:"type:jsonb;not null" json:"warnings"`
-	Blockers              datatypes.JSON `gorm:"type:jsonb;not null" json:"blockers"`
-	Explanation           datatypes.JSON `gorm:"type:jsonb;not null" json:"explanation"`
-	AIStatus              string         `gorm:"size:32;not null;index" json:"aiStatus"`
-	PricingProfileID      *uuid.UUID     `gorm:"type:char(36);index" json:"pricingProfileId,omitempty"`
-	MarketSignalSnapshot  datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"marketSignalSnapshot"`
-	ConfidenceBreakdown   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"confidenceBreakdown"`
-	ScoringConfigVersion  string         `gorm:"size:64;not null;default:selection-v1;index" json:"scoringConfigVersion"`
-	PricingProfileVersion int            `gorm:"not null;default:1" json:"pricingProfileVersion"`
-	RankingConfigVersion  string         `gorm:"size:64;not null;default:ranking-v1" json:"rankingConfigVersion"`
+	TenantID               int64          `gorm:"not null;default:0;index" json:"tenantId"`
+	CandidateID            uuid.UUID      `gorm:"type:char(36);not null;index;uniqueIndex:idx_candidate_analysis_version,priority:1" json:"candidateId"`
+	AnalysisVersion        int            `gorm:"not null;uniqueIndex:idx_candidate_analysis_version,priority:2" json:"analysisVersion"`
+	AnalysisMode           string         `gorm:"size:32;not null;index" json:"analysisMode"`
+	Platform               string         `gorm:"size:64;not null;index" json:"platform"`
+	InputSnapshot          datatypes.JSON `gorm:"type:jsonb;not null" json:"inputSnapshot"`
+	CostSnapshot           datatypes.JSON `gorm:"type:jsonb;not null" json:"costSnapshot"`
+	SKUSnapshot            datatypes.JSON `gorm:"type:jsonb;not null" json:"skuSnapshot"`
+	ScoreBreakdown         datatypes.JSON `gorm:"type:jsonb;not null" json:"scoreBreakdown"`
+	OverallScore           int64          `gorm:"not null;index" json:"overallScore"`
+	ConfidenceScore        int64          `gorm:"not null;index" json:"confidenceScore"`
+	Recommendation         string         `gorm:"size:64;not null;index" json:"recommendation"`
+	Reasons                datatypes.JSON `gorm:"type:jsonb;not null" json:"reasons"`
+	Warnings               datatypes.JSON `gorm:"type:jsonb;not null" json:"warnings"`
+	Blockers               datatypes.JSON `gorm:"type:jsonb;not null" json:"blockers"`
+	Explanation            datatypes.JSON `gorm:"type:jsonb;not null" json:"explanation"`
+	AIStatus               string         `gorm:"size:32;not null;index" json:"aiStatus"`
+	PricingProfileID       *uuid.UUID     `gorm:"type:char(36);index" json:"pricingProfileId,omitempty"`
+	MarketSignalSnapshot   datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"marketSignalSnapshot"`
+	ConfidenceBreakdown    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"confidenceBreakdown"`
+	ScoringConfigVersion   string         `gorm:"size:64;not null;default:selection-v1;index" json:"scoringConfigVersion"`
+	SelectionConfigID      *uuid.UUID     `gorm:"type:char(36);index" json:"selectionConfigId,omitempty"`
+	SelectionConfigVersion string         `gorm:"size:64;not null;default:selection-v1;index" json:"selectionConfigVersion"`
+	PricingProfileVersion  int            `gorm:"not null;default:1" json:"pricingProfileVersion"`
+	RankingConfigVersion   string         `gorm:"size:64;not null;default:ranking-v1" json:"rankingConfigVersion"`
 }
 
 func (CandidateAnalysis) TableName() string { return "candidate_analyses" }
@@ -270,17 +272,38 @@ func (PricingProfileRevision) TableName() string { return "pricing_profile_revis
 // MarketSignalProviderConfig records provider availability without storing plaintext credentials.
 type MarketSignalProviderConfig struct {
 	model.Base
-	TenantID      int64          `gorm:"not null;default:0;uniqueIndex:idx_market_provider,priority:1;index" json:"tenantId"`
-	ProviderID    string         `gorm:"size:128;not null;uniqueIndex:idx_market_provider,priority:2" json:"providerId"`
-	Name          string         `gorm:"size:128;not null" json:"name"`
-	SourceType    string         `gorm:"size:32;not null;index" json:"sourceType"`
-	Enabled       bool           `gorm:"not null;default:false;index" json:"enabled"`
-	Config        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"config"`
-	HealthStatus  string         `gorm:"size:32;not null;default:not_configured" json:"healthStatus"`
-	LastCheckedAt *time.Time     `json:"lastCheckedAt,omitempty"`
+	TenantID            int64          `gorm:"not null;default:0;uniqueIndex:idx_market_provider_platform,priority:1;index" json:"tenantId"`
+	ProviderID          string         `gorm:"size:128;not null;uniqueIndex:idx_market_provider_platform,priority:2" json:"providerId"`
+	ProviderType        string         `gorm:"size:128;not null;index" json:"providerType"`
+	Name                string         `gorm:"size:128;not null" json:"name"`
+	Platform            string         `gorm:"size:64;not null;index;uniqueIndex:idx_market_provider_platform,priority:3" json:"platform"`
+	SourceType          string         `gorm:"size:32;not null;index" json:"sourceType"`
+	Enabled             bool           `gorm:"not null;default:false;index" json:"enabled"`
+	Config              datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"config"`
+	CredentialReference string         `gorm:"size:256;not null;default:''" json:"-"`
+	HealthStatus        string         `gorm:"size:32;not null;default:not_configured" json:"healthStatus"`
+	LastCheckedAt       *time.Time     `json:"lastCheckedAt,omitempty"`
+	LastSuccessAt       *time.Time     `json:"lastSuccessAt,omitempty"`
+	LastError           string         `gorm:"type:text" json:"lastError,omitempty"`
 }
 
 func (MarketSignalProviderConfig) TableName() string { return "market_signal_provider_configs" }
+
+// SelectionConfig is an immutable versioned rule configuration. Activation is
+// explicit and historical CandidateAnalysis rows keep their original version.
+type SelectionConfig struct {
+	model.HardDeleteBase
+	TenantID    int64          `gorm:"not null;default:0;uniqueIndex:idx_selection_config_version,priority:1;index" json:"tenantId"`
+	Version     string         `gorm:"size:64;not null;uniqueIndex:idx_selection_config_version,priority:2" json:"version"`
+	Weights     datatypes.JSON `gorm:"type:jsonb;not null" json:"weights"`
+	Thresholds  datatypes.JSON `gorm:"type:jsonb;not null" json:"thresholds"`
+	Blockers    datatypes.JSON `gorm:"type:jsonb;not null" json:"blockers"`
+	Status      string         `gorm:"size:32;not null;index" json:"status"`
+	CreatedBy   *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
+	ActivatedAt *time.Time     `gorm:"index" json:"activatedAt,omitempty"`
+}
+
+func (SelectionConfig) TableName() string { return "selection_configs" }
 
 // ListingPerformanceSnapshot stores user-owned sales outcomes. Money is integer fen.
 type ListingPerformanceSnapshot struct {

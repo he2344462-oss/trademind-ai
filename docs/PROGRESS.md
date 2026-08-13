@@ -2,6 +2,8 @@
 
 更新时间：2026-08-13
 
+2026-08-13 Sprint 5：Market Provider 配置补齐平台、来源、凭据引用、健康状态、最后成功与脱敏错误；新增环境变量 Credential Store 抽象且不存储明文 Secret。Market Signal / Performance CSV 增加上传预览、字段映射、逐行验证和安全确认导入；校准报告默认排除 fixture，输出 Recommendation、Score Bucket、维度与规则效果、Suggestion Only 和 Learning Readiness。Selection Config 正式版本化并要求 Review/人工 Activate，新分析保存版本而旧分析不变。ProductFlow 仅拆出 credentialstore、importcsv、calibration 三个小边界，没有改动既有外部 API 行为或真实发布能力。
+
 2026-08-13 Sprint 4：批量候选分析增加暂停、恢复、取消、可重试失败恢复与任务明细；市场信号增加来源等级、Provider 状态、CSV/结构化导入、去重、新鲜度和多来源聚合；新增精确金额销售表现快照及 Selection Outcome Evaluation；Pricing Profile 增加不可变版本修订；选品工作台、主运营首页、分析任务页和费用设置页接入运营闭环。当前没有配置官方/授权的闲鱼或淘宝市场数据 Provider，系统明确显示未配置，不进行非授权抓取，也不实现真实平台发布。
 
 2026-08-13 Sprint 2 新增精确金额 Cost/Profit Engine、可配置且默认未配置的 Platform Pricing Profile、SKU 级利润、确定性 Selection Score Engine、动态权重/置信度/Blocker、不可变 `candidate_analyses` 历史快照，以及 Admin 候选分析与成本利润中心。AI 仅作为可选解释层，失败时使用规则模板；真实需求和竞争数据继续显示 unknown。本阶段仍不连接或发布到闲鱼、淘宝。

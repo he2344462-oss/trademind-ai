@@ -63,3 +63,7 @@ P10 stores Provider credential values only in backend AES-256-GCM envelopes whos
 OAuth state is random, expiring, single-use, and tenant/user/platform/shop/redirect bound. Redirects use an exact configured allowlist. The P10 Douyin adapter accepts only the trusted official HTTPS host, applies connection/request/header timeouts and a response-size limit, maps errors to safe internal codes, and exposes no inventory write capability.
 
 Current P10 runtime remains `L0`: real platform network, real credentials, real inventory read/write, inventory mutation, Worker, automatic business retry, Gray, and Production Ready are all disabled. Five kill switches take precedence over feature flags, and the write kill switch is permanently active in this release.
+
+## Market Signal Provider Credentials
+
+Market Signal Provider configuration never accepts API keys, tokens, passwords, or secrets inside its ordinary JSON config. Provider rows store only an opaque `credential_reference`; the local implementation supports `env:VARIABLE_NAME`, and the runtime interface can be replaced by KMS or a managed secret store. Read APIs expose only `configured` and a masked suffix. Health-check errors are length-limited and redact resolved credential values. Official/authorized placeholder providers remain fail-closed until a lawful adapter and credential are explicitly configured.

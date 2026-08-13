@@ -35,9 +35,12 @@ export async function routeAdminApi(page: Page) {
       (path === '/api/v1/auth/profile' ? ok(e2eUser) : null) ??
       (path === '/api/v1/settings' ? ok({ items: [] }) : null) ??
       (path === '/api/v1/image/providers' ? ok(imageProviderCapabilities) : null) ??
-      (path === '/api/v1/selection-dashboard' ? ok({ todaySources: 12, pendingCandidates: 8, todayAnalyzed: 20, strongRecommend: 2, recommend: 5, watch: 7, reject: 6, averageMarginBps: 3250, runningBatches: [], pausedBatches: 1, failedBatches: 0, marketCoverageBps: 2500, operationalSummary: '测试运营摘要' }) : null) ??
+      (path === '/api/v1/selection-dashboard' ? ok({ todaySources: 12, pendingCandidates: 8, todayAnalyzed: 20, strongRecommend: 2, recommend: 5, watch: 7, reject: 6, averageMarginBps: 3250, runningBatches: [], pausedBatches: 1, failedBatches: 0, marketCoverageBps: 2500, realMarketCoverageBps: 2000, realPerformanceCoverageBps: 1500, calibrationSampleCount: 25, calibrationReadiness: 'low', selectionConfigVersion: 'selection-v3-default', operationalSummary: '测试运营摘要' }) : null) ??
       (path === '/api/v1/performance/summary' ? ok({ snapshotCount: 20, listingCount: 20, views: 1200, inquiries: 80, orders: 12, refunds: 1, grossRevenue: 47880, realizedProfit: 16800, actualMarginBps: 3508 }) : null) ??
       (path === '/api/v1/evaluation/selection-performance' ? ok({ generatedAt: '2026-08-13T00:00:00Z', groups: [] }) : null) ??
+      (path === '/api/v1/calibration/report' ? ok({ generatedAt: '2026-08-13T00:00:00Z', includeTestData: false, sampleCount: 25, recommendationGroups: [], scoreBuckets: [], dimensionReports: [], ruleEffectiveness: [], suggestions: [{ message: '建议继续积累样本', suggestionOnly: true, sampleSize: 25 }], readiness: { level: 'low', realSamples: 25, timeSpanDays: 14, message: '样本有限，建议人工复核。' } }) : null) ??
+      (path === '/api/v1/market-signal-provider-configs' ? ok({ list: [] }) : null) ??
+      (path === '/api/v1/selection-configs' ? ok({ list: [{ id: 'selection-config-1', version: 'selection-v3-default', weights: { profit: 30, data_quality: 20, supply: 15, risk: 15, platform_fit: 10, demand: 5, competition: 5 }, thresholds: { strongRecommend: 85, recommend: 70, watch: 50, minimumMarginBps: 2000, minimumProfit: 500, staleAfterDays: 90 }, blockers: { sensitiveKeywords: [], blockerKeywords: [] }, status: 'active', createdAt: '2026-08-13T00:00:00Z' }] }) : null) ??
       (path === '/api/v1/pricing-profiles' ? ok({ list: [] }) : null) ??
       inventorySyncP9Response(path) ??
       productsResponse(path) ??

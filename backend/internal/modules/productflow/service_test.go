@@ -17,7 +17,7 @@ func newTestService(t *testing.T) *Service {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &ListingDraft{}, &PricingProfile{}, &PricingProfileRevision{}, &MarketSignalSnapshot{}, &MarketSignalProviderConfig{}, &CandidateAnalysisBatch{}, &CandidateAnalysisBatchItem{}, &ListingPerformanceSnapshot{}, &SelectionOutcomeEvaluation{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
+	require.NoError(t, db.AutoMigrate(&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &ListingDraft{}, &PricingProfile{}, &PricingProfileRevision{}, &MarketSignalSnapshot{}, &MarketSignalProviderConfig{}, &CandidateAnalysisBatch{}, &CandidateAnalysisBatchItem{}, &ListingPerformanceSnapshot{}, &SelectionOutcomeEvaluation{}, &SelectionConfig{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
 	return &Service{DB: db}
 }
 

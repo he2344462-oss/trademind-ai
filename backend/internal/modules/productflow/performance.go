@@ -71,7 +71,7 @@ type SelectionPerformanceReport struct {
 
 func performanceSourceAllowed(value string) bool {
 	switch value {
-	case SignalOriginOfficial, SignalOriginAuthorized, SignalOriginManual, SignalOriginImport, SignalOriginFixture:
+	case SignalOriginOfficial, SignalOriginAuthorized, SignalOriginPublic, SignalOriginManual, SignalOriginImport, SignalOriginFixture:
 		return true
 	}
 	return false

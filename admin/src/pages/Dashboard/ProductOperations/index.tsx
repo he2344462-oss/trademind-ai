@@ -867,9 +867,10 @@ export default function ProductOperationsDashboardPage() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}><MetricCard title="待分析候选" value={selection?.pendingCandidates ?? 0} intent="primary" /></Col>
           <Col xs={24} sm={12} lg={6}><MetricCard title="建议测试" value={(selection?.strongRecommend ?? 0) + (selection?.recommend ?? 0)} intent="success" /></Col>
-          <Col xs={24} sm={12} lg={6}><MetricCard title="市场信号覆盖" value={`${((selection?.marketCoverageBps ?? 0) / 100).toFixed(0)}%`} intent="warning" /></Col>
-          <Col xs={24} sm={12} lg={6}><MetricCard title="异常分析任务" value={(selection?.pausedBatches ?? 0) + (selection?.failedBatches ?? 0)} intent="danger" /></Col>
+          <Col xs={24} sm={12} lg={6}><MetricCard title="真实市场数据覆盖" value={`${((selection?.realMarketCoverageBps ?? 0) / 100).toFixed(0)}%`} intent="warning" /></Col>
+          <Col xs={24} sm={12} lg={6}><MetricCard title="真实销售反馈覆盖" value={`${((selection?.realPerformanceCoverageBps ?? 0) / 100).toFixed(0)}%`} intent="primary" /></Col>
         </Row>
+        <Space wrap size={[8, 8]} style={{ marginTop: 12 }}><Tag>校准样本 {selection?.calibrationSampleCount ?? 0}</Tag><Tag>Readiness {selection?.calibrationReadiness || 'insufficient'}</Tag><Tag>规则版本 {selection?.selectionConfigVersion || '—'}</Tag><Tag color={(selection?.pausedBatches ?? 0) + (selection?.failedBatches ?? 0) > 0 ? 'red' : 'green'}>异常任务 {(selection?.pausedBatches ?? 0) + (selection?.failedBatches ?? 0)}</Tag></Space>
         <Typography.Paragraph style={{ marginTop: 12, marginBottom: 0 }}>{selection?.operationalSummary || '正在汇总选品运营数据…'}</Typography.Paragraph>
       </ProCard>
       <ProCard variant="outlined" style={{ marginBottom: 16 }} bodyStyle={{ padding: '12px 16px' }}>

@@ -212,6 +212,10 @@ function expectThemeFramesConsistent(
 const smokeRoutes = [
   { path: "/selection-dashboard", name: /AI 选品工作台/ },
   { path: "/analysis-batches", name: /分析任务/ },
+  { path: "/data-imports", name: /真实数据导入/ },
+  { path: "/calibration", name: /选品效果/ },
+  { path: "/settings/market-providers", name: /Market Providers/ },
+  { path: "/settings/selection-configs", name: /选品规则版本/ },
   { path: "/recommendations", name: /AI 推荐榜/ },
   { path: "/system/pricing-profiles", name: /平台费用模型/ },
   { path: "/dashboard/product-operations", name: /运营总览|工作台/ },
@@ -238,6 +242,16 @@ test.describe("@smoke Admin route smoke", () => {
       await admin.writeGuard.expectRequestCount("unexpected", 0);
     });
   }
+
+  test("keeps Sprint 5 pages usable at 375px without root overflow", async ({ admin, page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    for (const route of ["/data-imports", "/calibration", "/settings/market-providers", "/settings/selection-configs"]) {
+      await admin.goto(route);
+      await expect(page.locator("#root")).toBeVisible();
+      await expectNoRootOverflow(page);
+    }
+    await admin.writeGuard.expectRequestCount("unexpected", 0);
+  });
 
   test("opens logout from the account dropdown without triggering a write", async ({
     admin,

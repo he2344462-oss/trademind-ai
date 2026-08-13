@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/trademind-ai/trademind/backend/internal/modules/operationlog"
 	"github.com/trademind-ai/trademind/backend/internal/modules/product"
+	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/credentialstore"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/pricingengine"
 	"github.com/trademind-ai/trademind/backend/internal/rdb"
 	"gorm.io/datatypes"
@@ -40,6 +41,7 @@ type Service struct {
 	AIExplanationTopN     int
 	MarketSignalProviders []MarketSignalProvider
 	MarketSignalFreshness map[string]MarketSignalFreshnessPolicy
+	CredentialStore       credentialstore.Store
 	// BeforeBatchAnalyze is an integration-test seam for deterministic transient failures.
 	// Production constructors leave it nil; it is never exposed through HTTP configuration.
 	BeforeBatchAnalyze func(context.Context, uuid.UUID, int) error
@@ -369,11 +371,25 @@ func (s *Service) SelectionDashboard(ctx context.Context, tenantID int64) (*Sele
 	if err := db.Raw("SELECT COUNT(*) candidates, SUM(CASE WHEN demand_score IS NOT NULL OR competition_score IS NOT NULL THEN 1 ELSE 0 END) covered FROM candidates WHERE tenant_id = ?", tenantID).Scan(&coverage).Error; err == nil && coverage.Candidates > 0 {
 		out.MarketCoverageBPS = coverage.Covered * 10000 / coverage.Candidates
 	}
+	if coverage.Candidates > 0 {
+		var realMarket, realPerformance int64
+		_ = db.Model(&MarketSignalSnapshot{}).Where("tenant_id = ? AND origin <> ?", tenantID, SignalOriginFixture).Distinct("candidate_id").Count(&realMarket).Error
+		_ = db.Model(&ListingPerformanceSnapshot{}).Where("tenant_id = ? AND source <> ?", tenantID, SignalOriginFixture).Distinct("candidate_id").Count(&realPerformance).Error
+		out.RealMarketCoverageBPS = realMarket * 10000 / coverage.Candidates
+		out.RealPerformanceCoverageBPS = realPerformance * 10000 / coverage.Candidates
+		out.CalibrationSampleCount = realPerformance
+	}
+	if report, reportErr := s.CalibrationReport(ctx, tenantID, false); reportErr == nil {
+		out.CalibrationReadiness = report.Readiness.Level
+	}
+	if config, configErr := s.ensureDefaultSelectionConfig(ctx, tenantID); configErr == nil {
+		out.SelectionConfigVersion = config.Version
+	}
 	var latest *time.Time
 	if err := db.Model(&ListingPerformanceSnapshot{}).Where("tenant_id = ?", tenantID).Select("MAX(observed_at)").Scan(&latest).Error; err == nil {
 		out.PerformanceUpdatedAt = latest
 	}
-	out.OperationalSummary = fmt.Sprintf("今日新增 %d 个货源，完成 %d 个候选分析；其中 %d 个建议测试，市场信号覆盖 %.0f%%。", out.TodaySources, out.TodayAnalyzed, out.StrongRecommend+out.Recommend, float64(out.MarketCoverageBPS)/100)
+	out.OperationalSummary = fmt.Sprintf("当前共有 %d 个已分析商品，其中真实市场信号覆盖 %.0f%%，真实销售反馈覆盖 %.0f%%。校准准备度：%s；系统不会自动调整选品权重。", out.StrongRecommend+out.Recommend+out.Watch+out.Reject, float64(out.RealMarketCoverageBPS)/100, float64(out.RealPerformanceCoverageBPS)/100, out.CalibrationReadiness)
 	return out, nil
 }
 

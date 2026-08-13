@@ -1,0 +1,8 @@
+import { Tabs } from 'antd';
+import { TmPageContainer } from '@/components/ui';
+import CsvImportPanel from './CsvImportPanel';
+import { confirmMarketSignalCSV, confirmPerformanceCSV, previewMarketSignalCSV, previewPerformanceCSV } from '@/services/productFlow';
+
+const marketFields = [{ value: 'candidate_id', label: 'Candidate ID', required: true }, { value: 'platform', label: '平台', required: true }, { value: 'signal_type', label: '信号类型', required: true }, { value: 'value', label: '值', required: true }, { value: 'unit', label: '单位' }, { value: 'observed_at', label: '观测时间', required: true }, { value: 'confidence', label: '可信度（0-100）' }, { value: 'source', label: '来源说明', required: true }];
+const performanceFields = ['candidate_id','catalog_product_id','listing_draft_id','platform','observed_at','period_start','period_end','impressions','views','clicks','favorites','inquiries','messages','orders','units_sold','gross_revenue','refund_amount','platform_cost','actual_cost','realized_profit','refund_count','return_count','after_sale_count'].map((value) => ({ value, label: value, required: ['candidate_id','catalog_product_id','platform','observed_at','period_start','period_end'].includes(value) }));
+export default function DataImportsPage() { return <TmPageContainer title="真实数据导入" subTitle="通过预览、字段映射和逐行验证导入自有市场信号与经营表现"><Tabs items={[{ key:'market', label:'Market Signal', children:<CsvImportPanel title="Market Signal CSV" fields={marketFields} preview={previewMarketSignalCSV} confirm={confirmMarketSignalCSV} /> }, { key:'performance', label:'Sales Performance', children:<CsvImportPanel title="Performance CSV" fields={performanceFields} preview={previewPerformanceCSV} confirm={confirmPerformanceCSV} /> }]} /></TmPageContainer>; }

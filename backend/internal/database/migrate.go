@@ -117,6 +117,13 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := migrateLegacyProductTextColumns(db); err != nil {
 		return err
 	}
+	// Sprint 5 scopes provider uniqueness by platform. Drop the legacy two-column
+	// index before AutoMigrate creates the new tenant/provider/platform index.
+	if db.Migrator().HasTable(&productflow.MarketSignalProviderConfig{}) && db.Migrator().HasIndex(&productflow.MarketSignalProviderConfig{}, "idx_market_provider") {
+		if err := db.Migrator().DropIndex(&productflow.MarketSignalProviderConfig{}, "idx_market_provider"); err != nil {
+			return fmt.Errorf("drop legacy market provider index: %w", err)
+		}
+	}
 	if err := db.AutoMigrate(
 		&admin.AdminUser{},
 		&admin.UserStorePermission{},
@@ -143,6 +150,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&productflow.CandidateAnalysisBatchItem{},
 		&productflow.ListingPerformanceSnapshot{},
 		&productflow.SelectionOutcomeEvaluation{},
+		&productflow.SelectionConfig{},
 		&productpublish.ProductPublishTask{},
 		&productpublish.ProductPublishBatch{},
 		&productpublish.ProductPublication{},

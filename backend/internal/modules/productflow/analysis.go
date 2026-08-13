@@ -268,7 +268,10 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 			hasStock = true
 		}
 	}
-	scoreCfg := selectionengine.DefaultConfig()
+	selectionConfig, scoreCfg, err := s.activeSelectionConfig(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 	score := selectionengine.Score(selectionengine.Input{Pricing: cost, MinimumSKUMarginBPS: sku.MinimumSKUMarginBPS, Market: market, Product: selectionengine.ProductData{Title: candidate.SourceProduct.OriginalTitle, Description: candidate.SourceProduct.OriginalDescription, ImageCount: len(images), SKUCount: len(rawSKUs), CompleteSKUCount: complete, HasPurchaseCost: candidate.SourceProduct.SourcePrice != nil, HasFreight: candidate.SourceProduct.Freight != nil, Supplier: candidate.SourceProduct.SupplierName, SourceURL: candidate.SourceProduct.SourceURL, Category: candidate.SourceProduct.OriginalCategory, MOQ: candidate.SourceProduct.MinOrderQuantity, HasStockData: hasStock, CollectedAt: candidate.SourceProduct.CollectedAt, Platform: platform}}, scoreCfg)
 	explanation := templateExplanation(score, cost)
 	aiStatus := "not_requested"
@@ -305,7 +308,7 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 			return e
 		}
 		version := locked.AnalysisVersion + 1
-		saved = CandidateAnalysis{TenantID: tenantID, CandidateID: id, AnalysisVersion: version, AnalysisMode: mode, Platform: platform, InputSnapshot: inputJSON, CostSnapshot: costJSON, SKUSnapshot: skuJSON, ScoreBreakdown: scoreJSON, OverallScore: score.OverallScore, ConfidenceScore: score.ConfidenceScore, Recommendation: score.Recommendation, Reasons: reasons, Warnings: warnings, Blockers: blockers, Explanation: explainJSON, AIStatus: aiStatus, PricingProfileID: profileID, MarketSignalSnapshot: marketJSON, ConfidenceBreakdown: confidenceJSON, ScoringConfigVersion: selectionengine.ConfigVersion, PricingProfileVersion: profileVersion, RankingConfigVersion: rankingengine.ConfigVersion}
+		saved = CandidateAnalysis{TenantID: tenantID, CandidateID: id, AnalysisVersion: version, AnalysisMode: mode, Platform: platform, InputSnapshot: inputJSON, CostSnapshot: costJSON, SKUSnapshot: skuJSON, ScoreBreakdown: scoreJSON, OverallScore: score.OverallScore, ConfidenceScore: score.ConfidenceScore, Recommendation: score.Recommendation, Reasons: reasons, Warnings: warnings, Blockers: blockers, Explanation: explainJSON, AIStatus: aiStatus, PricingProfileID: profileID, MarketSignalSnapshot: marketJSON, ConfidenceBreakdown: confidenceJSON, ScoringConfigVersion: selectionConfig.Version, SelectionConfigID: &selectionConfig.ID, SelectionConfigVersion: selectionConfig.Version, PricingProfileVersion: profileVersion, RankingConfigVersion: rankingengine.ConfigVersion}
 		if e := tx.Create(&saved).Error; e != nil {
 			return e
 		}
