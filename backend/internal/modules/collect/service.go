@@ -57,6 +57,11 @@ type Service struct {
 
 	// TaskLeaseTimeoutSeconds is Redis/DB lease for multi-instance workers (from COLLECT_TASK_TIMEOUT_SECONDS).
 	TaskLeaseTimeoutSeconds int
+
+	// ResolveWorkerTenantID keeps background collection tenant resolution aligned
+	// with the trusted HTTP request tenant policy. A nil resolver preserves the
+	// strict worker default and rejects non-positive tenant IDs.
+	ResolveWorkerTenantID func(int64) (int64, string, error)
 }
 
 func clampCollectPage(page, ps int) (int, int) {

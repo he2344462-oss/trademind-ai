@@ -386,6 +386,7 @@ func Register(r gin.IRouter, dep *Deps) (*collect.Service, *imagetask.Service, *
 		collectSvc.BatchRetryOnTimeout = dep.Config.CollectBatchRetryOnTimeout
 		collectSvc.Batch1688MaxRetries = dep.Config.CollectBatchMaxRetries1688
 		collectSvc.Settings = settingsSvc
+		collectSvc.ResolveWorkerTenantID = dep.Config.ResolveRequestTenantID
 	}
 	collectH := &collect.Handler{Svc: collectSvc}
 	collectRuleH := &collectrule.Handler{Svc: collectRuleSvc}

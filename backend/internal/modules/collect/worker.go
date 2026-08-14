@@ -74,37 +74,104 @@ func runCollectWorker(ctx context.Context, log *slog.Logger, svc *Service, queue
 		if len(res) < 2 {
 			continue
 		}
-		payload := res[1]
-
-		var msg QueueMessage
-		if err := json.Unmarshal([]byte(payload), &msg); err != nil {
-			if log != nil {
-				log.Warn("collect_worker_bad_message", "worker", slot, "error", err)
-			}
-			continue
-		}
-		tid, err := uuid.Parse(strings.TrimSpace(msg.TaskID))
-		if err != nil {
-			if log != nil {
-				log.Warn("collect_worker_bad_task_id", "worker", slot, "error", err)
-			}
-			continue
-		}
-
-		jobCtx := context.Background()
-		if svc.DB != nil {
-			var probe CollectTask
-			if err := svc.DB.WithContext(jobCtx).Select("tenant_id").First(&probe, "id = ?", tid).Error; err == nil {
-				wctx, _, terr := tasktenant.BeginWorker(jobCtx, svc.DB, probe.TenantID, uuid.Nil, "collect")
-				if terr != nil {
-					if log != nil {
-						log.Warn("collect_worker_tenant_missing", "worker", slot, "taskId", tid.String(), "error", tasktenant.WrapError(terr))
-					}
-					continue
-				}
-				jobCtx = wctx
-			}
-		}
-		svc.RunCollectJob(jobCtx, tid, workerLeaseID)
+		processCollectQueuePayload(context.Background(), log, svc, res[1], slot, workerLeaseID, svc.RunCollectJob)
 	}
+}
+
+type collectJobRunner func(context.Context, uuid.UUID, string)
+
+func processCollectQueuePayload(ctx context.Context, log *slog.Logger, svc *Service, payload string, slot int, workerLeaseID string, run collectJobRunner) {
+	var msg QueueMessage
+	if err := json.Unmarshal([]byte(payload), &msg); err != nil {
+		if log != nil {
+			log.Warn("collect_worker_bad_message", "worker", slot, "error", err)
+		}
+		return
+	}
+	tid, err := uuid.Parse(strings.TrimSpace(msg.TaskID))
+	if err != nil {
+		if log != nil {
+			log.Warn("collect_worker_bad_task_id", "worker", slot, "error", err)
+		}
+		return
+	}
+	if svc == nil || svc.DB == nil {
+		return
+	}
+
+	var task CollectTask
+	if err := svc.DB.WithContext(ctx).First(&task, "id = ?", tid).Error; err != nil {
+		if log != nil {
+			log.Warn("collect_worker_task_lookup_failed", "worker", slot, "taskId", tid.String(), "error", err)
+		}
+		return
+	}
+
+	jobCtx, terr := svc.collectWorkerContext(ctx, &task)
+	if terr != nil {
+		svc.failUnclaimedTask(ctx, &task, "TASK_TENANT_CONTEXT_INVALID", tasktenant.WrapError(terr))
+		if log != nil {
+			log.Warn("collect_worker_tenant_missing", "worker", slot, "taskId", tid.String(), "error", tasktenant.WrapError(terr))
+		}
+		return
+	}
+	if run != nil {
+		run(jobCtx, tid, workerLeaseID)
+	}
+}
+
+func (s *Service) collectWorkerContext(ctx context.Context, task *CollectTask) (context.Context, error) {
+	if task == nil {
+		return ctx, fmt.Errorf("collect task missing")
+	}
+	tenantID := task.TenantID
+	resolutionSource := ""
+	if s != nil && s.ResolveWorkerTenantID != nil {
+		resolved, source, err := s.ResolveWorkerTenantID(tenantID)
+		if err != nil {
+			return ctx, err
+		}
+		tenantID = resolved
+		resolutionSource = source
+	}
+	if tenantID == 0 && resolutionSource == "legacy_dev_zero" {
+		return tasktenant.BuildWorkerContext(tasktenant.TaskScope{TenantID: 0}, uuid.Nil, "collect"), nil
+	}
+	wctx, _, err := tasktenant.BeginWorker(ctx, s.DB, tenantID, uuid.Nil, "collect")
+	return wctx, err
+}
+
+func (s *Service) failUnclaimedTask(ctx context.Context, task *CollectTask, errorCode, message string) {
+	if s == nil || s.DB == nil || task == nil {
+		return
+	}
+	now := time.Now().UTC()
+	fromStatus := task.Status
+	result := s.DB.WithContext(ctx).Model(&CollectTask{}).
+		Where("id = ? AND status IN ?", task.ID, []string{StatusPending, StatusRetrying}).
+		Updates(map[string]any{
+			"status":        StatusFailed,
+			"error_message": truncateRunes(strings.TrimSpace(message), 8000),
+			"finished_at":   &now,
+			"locked_by":     nil,
+			"locked_until":  nil,
+			"updated_at":    now,
+		})
+	if result.Error != nil || result.RowsAffected == 0 {
+		return
+	}
+	task.Status = StatusFailed
+	task.FinishedAt = &now
+	task.ErrorMessage = truncateRunes(strings.TrimSpace(message), 8000)
+	s.RecordTaskEvent(ctx, task, TaskEventInput{
+		EventType:    EventTaskFailed,
+		FromStatus:   fromStatus,
+		ToStatus:     StatusFailed,
+		Message:      "collect worker initialization failed",
+		ErrorMessage: task.ErrorMessage,
+		RetryCount:   task.RetryCount,
+		MaxRetries:   s.effectiveMaxRetries(task),
+		PayloadMap:   map[string]any{"errorCode": errorCode, "retryable": false},
+	})
+	s.reconcileCollectBatch(ctx, task.BatchID)
 }
