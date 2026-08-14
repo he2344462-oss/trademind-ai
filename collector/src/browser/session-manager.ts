@@ -201,7 +201,7 @@ export class BrowserSessionManager {
         ? 'https://mobile.yangkeduo.com/'
         : provider === PROVIDER_TAOBAO_TMALL
           ? 'https://www.taobao.com/'
-          : 'https://www.1688.com/';
+          : 'https://login.1688.com/';
     const alreadyMsg =
       provider === PROVIDER_PINDUODUO
         ? '采集浏览器已打开，请在窗口中完成拼多多登录或安全验证'

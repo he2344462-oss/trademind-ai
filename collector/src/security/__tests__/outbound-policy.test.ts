@@ -89,6 +89,15 @@ describe('collector outbound security policy', () => {
     }
   });
 
+  it('allows only the exact additional login hosts required by the 1688 provider', () => {
+    const domains = allowedDomainsForProvider('1688');
+    expect(domainAllowed('login.taobao.com', domains)).toBe(true);
+    expect(domainAllowed('main.m.tmall.com', domains)).toBe(true);
+    expect(domainAllowed('passport.taobao.com', domains)).toBe(true);
+    expect(domainAllowed('www.taobao.com', domains)).toBe(false);
+    expect(domainAllowed('www.tmall.com', domains)).toBe(false);
+  });
+
   it('rejects DNS resolution timeout', async () => {
     const resolver: DnsResolver = () => new Promise(() => undefined);
     await blocked(assertOutboundUrl('https://example.com/item', policy(['example.com'], resolver)), 'dns_timeout');

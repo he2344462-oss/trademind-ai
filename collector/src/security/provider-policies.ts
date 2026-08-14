@@ -2,7 +2,15 @@ import { getCustomAllowedDomains } from '../config/env.js';
 import type { OutboundPolicy } from './outbound-policy.js';
 
 export const PROVIDER_ALLOWED_DOMAINS: Readonly<Record<string, readonly string[]>> = {
-  '1688': ['1688.com', 'alibaba.com', 'alicdn.com', 'mmstat.com'],
+  '1688': [
+    '1688.com',
+    'alibaba.com',
+    'alicdn.com',
+    'mmstat.com',
+    'login.taobao.com',
+    'main.m.tmall.com',
+    'passport.taobao.com',
+  ],
   aliexpress: ['aliexpress.com', 'aliexpress.us', 'alibaba.com', 'alicdn.com'],
   pinduoduo: ['yangkeduo.com', 'pinduoduo.com', 'qq.com', 'qpic.cn'],
   taobao_tmall: ['taobao.com', 'tmall.com', 'alibaba.com', 'alicdn.com', 'mmstat.com'],
