@@ -2,6 +2,12 @@
 
 项目已进入生产维护阶段。工作区只保留当前开发、部署、运维和人工验收所需文档；历史阶段报告、一次性门禁报告和运行证据不再保存在当前工作树中，必要时从 Git 历史查询。
 
+## 产品方向
+
+- [产品愿景与北极星](PRODUCT_VISION.md)
+- [Now / Next / Later 路线图](roadmap.md)
+- [当前维护状态](PROGRESS.md)
+
 ## 使用与部署
 
 - [本地开发](development.md)
@@ -31,7 +37,6 @@
 - [模块关联索引](module-map.md)
 - [任务检查清单](task-checklist.md)
 - [分支与 PR](branching.md)
-- [当前维护状态](PROGRESS.md)
 
 ## 验收约定
 

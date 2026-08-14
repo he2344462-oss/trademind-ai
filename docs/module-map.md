@@ -60,6 +60,10 @@
 ## Sprint 2 成本利润与选品评分
 
 相关实现包括 `backend/internal/modules/productflow/pricingengine`、`selectionengine`、`candidate_analyses`、Candidate 分析 API、Catalog 成本快照、Listing Pricing Profile、Admin Candidates 和 CostCenter。确定性规则负责金额与分数，AI 只解释且必须可降级。
+
+Selection Score V4 将 Base Quality、Market Opportunity、Market Evidence Coverage、Analysis Confidence 和 Final Recommendation 分开。`overallScore` 仅作为 Base Quality 的兼容别名；Market Opportunity 在 Demand/Competition 都缺少可靠证据时保持 `nil`。推荐状态机按市场证据强制门控，Risk 区分 verified/no-known/insufficient evidence，Platform Fit 只为已知适配证据计分。评分算法版本和用户 Selection Config 版本分别保存，历史 Analysis 不随算法或配置变化重算。
+
+采购运费自动化归属同一商品经营边界：Collector 的 `source1688/freight.ts` 只提取官方页面可见证据；`productflow/freight.go` 保存当前状态和 `source_product_freight_snapshots` 历史快照；`settings/procurement_defaults.go` 读取运营者配置的默认收货地区与采购数量；Pricing Engine 使用分摊后的单件运费。`unknown` 不得作为已确认的零运费，必须降低分析可信度并显示“不含可靠采购运费”。
 # 预生产基础设施
 
 Changes to `.env.example`, `deploy/preproduction/**`, or `deploy/scripts/*preproduction*` must be checked together with `docs/P10_PREPRODUCTION_ARCHITECTURE.md`, `docs/env.md`, `docs/docker-deployment.md`, workflow configuration, sensitive-diff checks, and the manual acceptance checklist. Production resources and credentials are outside the default writable scope.
@@ -69,7 +73,7 @@ Changes to `.env.example`, `deploy/preproduction/**`, or `deploy/scripts/*prepro
 Changes under `backend/internal/modules/credentialp10`, `inventoryreadp10`, or `productioncontrolp10` must be checked with backend routing, migration, `adminperm`, metrics/redaction, config validation, Admin `/ops/p10-readiness`, `admin/src/services/p10Readiness.ts`, API/provider/security docs, environment templates, CI regression, and `P10_MANUAL_ACCEPTANCE_CHECKLIST.md`. `inventoryreadp10` may depend on exported inventory Provider/calibration/audit contracts. No production code may expose `sku.syncStock`, a Worker, scheduler, queue consumer, or automatic business retry without separate approval.
 # Sprint 3 模块补充
 
-批量选品继续归属 `backend/internal/modules/productflow`：`batch_analysis.go` 负责 Redis 批次与幂等领取，`rankingengine` 负责可解释排序，`market_signal.go` 保存带来源和新鲜度的信号，`pricing_profile.go` 负责数据库费用模型。Admin 对应 `Commerce/Candidates`、`Commerce/Recommendations` 与 `Settings/PricingProfiles`。
+批量选品继续归属 `backend/internal/modules/productflow`：`batch_analysis.go` 负责 Redis 批次与幂等领取，`rankingengine` 负责可解释排序并区分仅 Base Quality 初筛与具有 Market Opportunity 证据的排序，`market_signal.go` 保存带来源和新鲜度的信号，`pricing_profile.go` 负责数据库费用模型。Admin 对应 `Commerce/Candidates`、`Commerce/Recommendations` 与 `Settings/PricingProfiles`。
 
 # Sprint 4 模块补充
 

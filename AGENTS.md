@@ -14,6 +14,7 @@
 ## 必读入口
 
 - `README.md`、`docs/README.md`
+- 大型功能、跨模块或架构任务开始前，先阅读 `docs/PRODUCT_VISION.md` 与 `docs/roadmap.md`，确认任务服务核心经营闭环和当前 Now 优先级
 - `docs/ai-workflow.md`、`docs/ai-coding-rules.md`
 - `.agents/skills/code-quality/SKILL.md`
 - `.agents/skills/modular-architecture/SKILL.md`

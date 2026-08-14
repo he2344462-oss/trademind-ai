@@ -185,3 +185,26 @@ pnpm collect:test -- --url "https://detail.1688.com/offer/1048021652334.html"
 3. 改价格逻辑时确认 **不会**把 weight/stock/id 当 price。
 4. 改 SKU DOM 逻辑时用 **§3、§4** 两类商品各测一条。
 5. 收尾：`pnpm build:collector` + 更新 **`docs/PROGRESS.md`** 变更记录。
+
+---
+
+## 9. 异步 SKU Selector 未捕获会退化成单维颜色
+
+### 现象
+
+商品页肉眼可见“颜色 × 尺码”，但 Collector 只返回颜色；所有 SKU 被页面级最低展示价覆盖，库存、SKU ID 和颜色图为空。
+
+### 根因与修复
+
+- 新版 1688 详情页通过同源接口 `mtop.1688.wosc.queryofferskuselectormodel` 异步返回完整 `originalSkuInfoMap`。
+- DOM 只保证当前可见颜色选项，不能作为真实可购买矩阵的唯一数据源。
+- `alibaba-1688.ts` 在安全策略保护的 Page 上捕获该精确响应；`sku-selector-model.ts` 只按响应中的真实 map 项生成 SKU，不做笛卡尔积补造。
+- 每条 SKU 保留 `skuId`、`specId`、属性组合、价格、`canBookCount` 和规格图；0 库存保持为 0。
+- 网络 SKU 价格区间优先于页面级推荐区/展示价，避免把无关的 `5.20` 回填到所有变体。
+
+### 回归检查
+
+- [ ] 多维商品的 SKU 数量等于官方 SKU map 项数，不受 60 条旧截断影响。
+- [ ] 不存在的颜色/尺码组合不会被人工补造。
+- [ ] SKU ID、价格、0 库存、非零库存和规格图均可保留。
+- [ ] 重复采集返回同一个 `source_product` ID，并刷新已有 Catalog，不创建重复商品。

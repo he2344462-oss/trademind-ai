@@ -21,7 +21,7 @@
 | `GET` / `POST` | `/source-products` | 货源列表；创建或导入测试货源。 |
 | `GET` | `/source-products/:id` | 货源详情。 |
 | `POST` | `/source-products/:id/candidate` | 幂等加入候选池，返回 `candidate` 与 `created`。 |
-| `GET` | `/candidates` | 候选列表，支持 `status`、`keyword` 和分页。 |
+| `GET` | `/candidates` | 候选列表，支持 `status`、`keyword`、`freightStatus`（`verified` / `estimated` / `free_shipping` / `unknown`）和分页。 |
 | `GET` | `/candidates/:id` | 候选详情及关联货源。 |
 | `POST` | `/candidates/:id/approve` | 人工批准并事务性生成 Catalog Product；重复批准返回同一商品。 |
 | `POST` | `/candidates/:id/watch` | 转为观察状态。 |
@@ -75,6 +75,10 @@ Candidate 的 Sprint 1 人工状态包括 `pending`、`analyzing`、`recommended
 | `PUT` | `/api/v1/settings` | 保存系统设置，敏感字段必须加密。 |
 | `POST` | `/api/v1/settings/test-ai` | 经 **AI Gateway** 测试 `settings.ai`（支持 `openai` / `openai_compatible` / `deepseek` / `qwen`）。各服务商 **`{provider}_api_key` / `{provider}_base_url` / `{provider}_model`** 独立存储；可选 JSON：`provider`、`base_url`、`model`、`api_key`（写入当前 provider 对应项；`****` 占位则沿用已保存密钥）、`timeout_sec`，用于**未保存前**用当前表单试连；空 body 仅用库内配置。成功 `data`：`ok`、`message`、`provider`、`model`、`latencyMs`。 |
 | `POST` | `/api/v1/settings/test-storage` | 测试 Storage Provider 配置。 |
+
+采购默认场景保存在设置分组 `procurement`：`default_purchase_destination` 为运营者配置的默认收货地区，`default_purchase_quantity` 为默认测试采购数量。1688 采集任务会将这两个值快照到任务选项，不在业务代码中硬编码地区。
+
+`SourceProduct` / `Catalog Product` 成本响应增加 `freightStatus`、分摊后 `freightAmountCents`、整单 `freightOrderAmountCents`、币种、目的地、数量、来源、可信度、观察时间与计算方法。Candidate Analysis 的 `costSnapshot` 增加 `freightStatus`、`freightCost`、`freightIncluded`、`profitBasis` 与 `warnings`；当状态为 `unknown` 时，`profitBasis=excluding_freight`，利润只用于初筛。
 | `POST` | `/api/v1/storage/test-public-access` | 上传探针图片并通过匿名 HTTP 验证公网可访问性（HTTPS、`image/*`、无登录跳转）；需 `settings.manage`；失败返回 `STORAGE_PUBLIC_*` 错误码。 |
 | `POST` | `/api/v1/settings/storage/public-check` | 同上（P1 别名） |
 | `GET` | `/api/v1/settings/storage/public-check/latest` | 最近一次公网测试结果（未执行时 `not_run`） |
@@ -558,7 +562,7 @@ Current code-level P7 endpoints affected: product and order list APIs reject exc
 | `GET` | `/api/v1/cost-center` | 获取正式商品成本利润汇总及异常计数 |
 | `POST` | `/api/v1/catalog-products/:id/listing-drafts` | 可传 `pricingProfile` 分别计算平台建议售价和预计利润；仅创建草稿 |
 
-综合分只对可靠维度重新归一化；当前 `demand` 与 `competition` 是 unknown。Blocker 强制输出 `reject`。AI 失败或未配置时使用规则模板，不修改金额、分数或 blocker。
+`selection-score-v4` 将结果拆为 `baseQualityScore`、可空的 `marketOpportunityScore`、`evidenceCoverageBps`、`confidenceScore` 与 `recommendation`。兼容字段 `overallScore` 在 V4 中仅是 `baseQualityScore` 的别名，不再表示“值得卖”。Demand/Competition 都是 unknown 或市场证据覆盖为 0 时，最终建议最高只能为 `watch`；只有一个可靠市场维度时最高为 `recommend`；两个市场维度均可靠、分析可信度和证据覆盖达到配置门槛后才可能为 `strong_recommend`。Blocker 强制输出 `reject`。AI 失败或未配置时使用规则模板，不修改金额、分数或 blocker。
 
 - 文档：同步本文档、`docs/module-map.md` 和必要的 README 能力描述。
 - 安全：涉及密钥、Token、密码、Cookie 时同步 `SECURITY.md`。

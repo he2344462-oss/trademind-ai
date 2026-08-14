@@ -1,6 +1,14 @@
 # TradeMind 当前维护状态
 
-更新时间：2026-08-13
+更新时间：2026-08-14
+
+2026-08-14 完成 Selection Score V4 语义收口：评分结果正式拆为 Base Quality、Market Opportunity、Market Evidence Coverage、Analysis Confidence 与 Final Recommendation。Demand/Competition 都缺少可靠证据时 Market Opportunity 保持 unknown，最终建议最高为观察/小规模测试；单一可靠市场维度最高 Recommend，双维度可靠且可信度、覆盖和质量门槛同时满足才可能 Strong Recommend。Risk 不再把“未命中风险”直接记为 100，Platform Fit 不再把未知运营条件当成已适配。兼容字段 `overallScore` 仅代表 Base Quality；新 Analysis 使用 `selection-score-v4`，历史版本不覆盖。
+
+2026-08-14 Selection Score V3 分布验收判定 FAIL：106 个候选中 90 分商品 61 个，Risk=100 占 99.06%，Platform Fit=100 占 77.36%，且全部缺少 Demand/Competition。该结论促成 V4 语义拆分，而不是按 fixture 分布机械调权。
+
+2026-08-14 完成采购运费自动化 V1：1688 Collector 从官方页面可见证据中区分已验证、估算、包邮和未知，不把“运费 ¥X 起”当作固定运费；运营设置提供默认收货地区与测试采购数量；后端以整数分保存当前运费及去重历史快照，并按整单运费/数量计算单件运费。Pricing 继续使用最高风险 SKU 成本，未知运费会明确标记为未计入、降低分析数据可信度，并在候选池和成本利润中心提供状态筛选与警告。未修改 Selection 权重、Collector 域名许可或平台发布能力。
+
+2026-08-14 修复真实 1688 多规格采集准确性：Collector 捕获官方同源 SKU Selector 异步响应，按真实 SKU map 保留多维属性、source SKU ID、逐 SKU 价格、库存和规格图，不再用单维 DOM 与页面级展示价替代完整矩阵；Backend 的货源 Upsert 始终回读持久化 ID，并以该 ID 幂等刷新已有 Catalog SKU，同时保留运营售价。已增加二维 SKU、缺失组合不补造、货源 ID 幂等和 Catalog SKU 刷新回归测试；未修改登录、安全策略或域名许可。
 
 2026-08-13 Sprint 5：Market Provider 配置补齐平台、来源、凭据引用、健康状态、最后成功与脱敏错误；新增环境变量 Credential Store 抽象且不存储明文 Secret。Market Signal / Performance CSV 增加上传预览、字段映射、逐行验证和安全确认导入；校准报告默认排除 fixture，输出 Recommendation、Score Bucket、维度与规则效果、Suggestion Only 和 Learning Readiness。Selection Config 正式版本化并要求 Review/人工 Activate，新分析保存版本而旧分析不变。ProductFlow 仅拆出 credentialstore、importcsv、calibration 三个小边界，没有改动既有外部 API 行为或真实发布能力。
 
