@@ -34,6 +34,8 @@ export type BrowserExtractPayload = {
   domSkuTableRows: DomSkuTableRow[];
   /** 可能含 JSON 的 script 片段（已截断，供 Node 侧再解析） */
   scriptSnippets: string[];
+  /** 详情页官方 SKU Selector 异步响应；仅由受安全策略保护的页面响应捕获。 */
+  networkSkuSelectorModel?: unknown;
 };
 
 export type Parse1688Result = Pick<

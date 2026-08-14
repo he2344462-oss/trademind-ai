@@ -47,6 +47,7 @@ import {
   truncate,
   trimStr,
 } from './utils.js';
+import { parse1688SkuSelectorModel, skuPriceRange } from './sku-selector-model.js';
 
 function normalizeAndFilterImg(raw: string, baseUrl: string, out: string[]): void {
   const abs = normalizeImageUrl(raw, baseUrl);
@@ -525,6 +526,10 @@ export function assembleParsedProduct(
     extractPriceFromJsonRoots(jsonRoots) ??
     extractPriceFromDomText(payload.domPriceTexts ?? []);
 
+  const networkSkus = parse1688SkuSelectorModel(payload.networkSkuSelectorModel);
+  const networkPriceRange = skuPriceRange(networkSkus);
+  if (networkPriceRange.min !== undefined) productPrice = networkPriceRange.min;
+
   const jsonImages = extractImagesFromJsonRoots(jsonRoots, baseUrl);
   const domImages = mergeDomMetaImages({
     domGallery: payload.galleryUrls,
@@ -628,8 +633,8 @@ export function assembleParsedProduct(
     dimRowsFromPayload.push(...flattenSkuPropLike(sp));
   }
 
-  let skus: ProductSku[] = [];
-  if (contextData) {
+  let skus: ProductSku[] = networkSkus;
+  if (skus.length === 0 && contextData) {
     try {
       skus = mineSkusFrom1688Data(contextData, dimRowsFromPayload, productPrice);
     } catch {
@@ -683,6 +688,9 @@ export function assembleParsedProduct(
     usedFallback: imageBuckets.usedFallback,
     extractors: imageBuckets.extractorHints,
     productPrice,
+    networkSkuSelectorFound: networkSkus.length > 0,
+    networkSkuCount: networkSkus.length,
+    networkSkuPriceRange: networkPriceRange,
   };
 
   let collectStatus: 'success' | 'partial_success' = 'success';
@@ -720,6 +728,9 @@ export function assembleParsedProduct(
     extractedAt: new Date().toISOString(),
     jsonRootCount: jsonRoots.length,
     scriptSnippetCount: payload.scriptSnippets.length,
+    networkSkuSelector: networkSkus.length > 0
+      ? { source: 'queryofferskuselectormodel', skuCount: networkSkus.length, priceRange: networkPriceRange }
+      : undefined,
     scriptDigest: truncate(
       payload.scriptSnippets
         .slice(0, 2)

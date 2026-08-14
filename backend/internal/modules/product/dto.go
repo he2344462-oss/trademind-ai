@@ -232,6 +232,8 @@ type DetailDTO struct {
 
 // ImportDraftParams converts collector output into a product draft (no collect package import).
 type ImportDraftParams struct {
+	TenantID        int64
+	SourceProductID *uuid.UUID
 	Source             string
 	SourceURL          string
 	Title              string

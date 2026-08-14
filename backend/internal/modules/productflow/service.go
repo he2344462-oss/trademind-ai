@@ -155,10 +155,13 @@ func (s *Service) UpsertCollectedSource(ctx context.Context, in CollectedSourceI
 	if err != nil {
 		return nil, err
 	}
-	if row.ID == uuid.Nil {
-		err = s.DB.WithContext(ctx).Where("tenant_id = ? AND source_platform = ? AND source_product_id = ?", in.TenantID, platform, sourceID).First(&row).Error
-	}
-	return &row, err
+	// GORM assigns a UUID before INSERT. On PostgreSQL ON CONFLICT that transient UUID
+	// is not the persisted row ID, so always read the canonical identity back.
+	var persisted SourceProduct
+	err = s.DB.WithContext(ctx).
+		Where("tenant_id = ? AND source_platform = ? AND source_product_id = ?", in.TenantID, platform, sourceID).
+		First(&persisted).Error
+	return &persisted, err
 }
 
 func (s *Service) CreateSource(ctx context.Context, tenantID int64, body CreateSourceProductBody) (*SourceProduct, error) {

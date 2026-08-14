@@ -457,7 +457,9 @@ func (s *Service) RunCollectJob(parent context.Context, taskID uuid.UUID, worker
 		}
 		sourceProductID = &source.ID
 	}
-	created, err := s.Products.ImportDraftWithContext(ctx, task.CreatedBy, params)
+	params.TenantID = task.TenantID
+	params.SourceProductID = sourceProductID
+	created, _, err := s.Products.UpsertCollectedDraftWithContext(ctx, task.CreatedBy, params)
 	if err != nil {
 		s.handleCollectJobError(ctx, task, err, workerID, claim)
 		return

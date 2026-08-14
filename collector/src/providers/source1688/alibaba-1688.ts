@@ -183,8 +183,45 @@ function resolveCollectOutcome(
   return { kind: 'success', assembled };
 }
 
-async function extractAssembled(page: Page, sourceUrl: string): Promise<Parse1688Result & { blocked?: boolean }> {
+const SKU_SELECTOR_HOST = 'h5api.m.1688.com';
+const SKU_SELECTOR_PATH = '/h5/mtop.1688.wosc.queryofferskuselectormodel/1.0/';
+const MAX_SKU_SELECTOR_RESPONSE_BYTES = 1_048_576;
+
+function captureSkuSelectorModel(page: Page): {
+  pending: Promise<void>[];
+  get: () => unknown;
+} {
+  const pending: Promise<void>[] = [];
+  let model: unknown;
+  page.on('response', (response) => {
+    let url: URL;
+    try {
+      url = new URL(response.url());
+    } catch {
+      return;
+    }
+    if (url.hostname !== SKU_SELECTOR_HOST || url.pathname !== SKU_SELECTOR_PATH || response.status() !== 200) return;
+    const contentLength = Number(response.headers()['content-length'] ?? '0');
+    if (Number.isFinite(contentLength) && contentLength > MAX_SKU_SELECTOR_RESPONSE_BYTES) return;
+    const task = response.body()
+      .then((body) => {
+        if (body.byteLength > MAX_SKU_SELECTOR_RESPONSE_BYTES) return;
+        const root = JSON.parse(body.toString('utf8')) as { data?: { skuSelectorBizModel?: unknown } };
+        if (root.data?.skuSelectorBizModel) model = root.data.skuSelectorBizModel;
+      })
+      .catch(() => undefined);
+    pending.push(task);
+  });
+  return { pending, get: () => model };
+}
+
+async function extractAssembledWithNetworkSku(
+  page: Page,
+  sourceUrl: string,
+  skuSelectorModel: unknown,
+): Promise<Parse1688Result & { blocked?: boolean }> {
   const payload = await extractBrowserPayload(page);
+  payload.networkSkuSelectorModel = skuSelectorModel;
   return assembleParsedProduct(sourceUrl, payload);
 }
 
@@ -224,6 +261,7 @@ class Alibaba1688Provider implements CollectorProvider {
       browser.with1688Page(async (page) => {
         const gotoTimeout = getDefaultNavigationTimeoutMs();
         let loginOrVerifyHit = false;
+        const skuSelectorCapture = captureSkuSelectorModel(page);
 
         try {
           await gotoOfferPage(page, navUrl, sourceUrl, gotoTimeout);
@@ -238,6 +276,7 @@ class Alibaba1688Provider implements CollectorProvider {
 
         await page.waitForLoadState('networkidle', { timeout: Math.min(gotoTimeout, 12_000) }).catch(() => undefined);
         await prepare1688OfferPage(page, batchMode);
+        await Promise.allSettled(skuSelectorCapture.pending);
 
         const finalHref = page.url();
         if (isCaptchaRedirectUrl(finalHref)) {
@@ -256,11 +295,12 @@ class Alibaba1688Provider implements CollectorProvider {
         }
 
         const onOfferPath = isLikelyOfferPath(finalHref);
-        let assembled = await extractAssembled(page, sourceUrl);
+        let assembled = await extractAssembledWithNetworkSku(page, sourceUrl, skuSelectorCapture.get());
 
         if (assembled.mainImages.length === 0) {
           await prepare1688OfferPage(page, batchMode);
-          assembled = await extractAssembled(page, sourceUrl);
+          await Promise.allSettled(skuSelectorCapture.pending);
+          assembled = await extractAssembledWithNetworkSku(page, sourceUrl, skuSelectorCapture.get());
         }
 
         const missing = fieldMissingSummary(assembled);

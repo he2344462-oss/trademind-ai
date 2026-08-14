@@ -3,6 +3,7 @@ package product
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/trademind-ai/trademind/backend/internal/modules/aiprompt"
 	"github.com/trademind-ai/trademind/backend/internal/modules/aitask"
@@ -757,6 +759,105 @@ func (s *Service) ImportDraftWithContext(ctx context.Context, adminID *uuid.UUID
 	return out, nil
 }
 
+// UpsertCollectedDraftWithContext refreshes the collector-owned fields of an existing catalog/draft
+// for the same source product. Operator sale price and other operating fields are preserved.
+func (s *Service) UpsertCollectedDraftWithContext(ctx context.Context, adminID *uuid.UUID, p ImportDraftParams) (*Product, bool, error) {
+	if s == nil || s.DB == nil {
+		return nil, false, fmt.Errorf("product: no db")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var existing Product
+	query := s.DB.WithContext(ctx).Where("tenant_id = ?", p.TenantID)
+	if p.SourceProductID != nil {
+		err := query.Where("source_product_id = ?", *p.SourceProductID).First(&existing).Error
+		if err == nil {
+			out, refreshErr := s.refreshCollectedDraftCore(ctx, &existing, p)
+			return out, false, refreshErr
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, false, err
+		}
+	}
+	if sourceURL := strings.TrimSpace(p.SourceURL); sourceURL != "" {
+		err := query.Where("source = ? AND source_url = ? AND source_product_id IS NULL", strings.TrimSpace(p.Source), sourceURL).
+			Order("created_at ASC").First(&existing).Error
+		if err == nil {
+			out, refreshErr := s.refreshCollectedDraftCore(ctx, &existing, p)
+			return out, false, refreshErr
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, false, err
+		}
+	}
+	out, err := s.ImportDraftWithContext(ctx, adminID, p)
+	return out, true, err
+}
+
+func (s *Service) refreshCollectedDraftCore(ctx context.Context, existing *Product, p ImportDraftParams) (*Product, error) {
+	if existing == nil || existing.ID == uuid.Nil {
+		return nil, fmt.Errorf("product: refresh target missing")
+	}
+	var out Product
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var locked Product
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&locked, "id = ? AND tenant_id = ?", existing.ID, p.TenantID).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("product_id = ?", locked.ID).Delete(&ProductSKU{}).Error; err != nil {
+			return err
+		}
+
+		var purchaseCost *float64
+		for _, line := range p.SKUs {
+			if line.CostPrice != nil && (purchaseCost == nil || *line.CostPrice < *purchaseCost) {
+				value := *line.CostPrice
+				purchaseCost = &value
+			}
+		}
+		updates := map[string]any{
+			"source":         strings.TrimSpace(p.Source),
+			"source_url":     strings.TrimSpace(p.SourceURL),
+			"original_title": strings.TrimSpace(p.Title),
+			"raw_data":       datatypes.JSON(p.FullNormalizedJSON),
+			"purchase_cost":  purchaseCost,
+		}
+		if p.SourceProductID != nil && locked.SourceProductID == nil {
+			updates["source_product_id"] = *p.SourceProductID
+		}
+		if err := tx.Model(&locked).Updates(updates).Error; err != nil {
+			return err
+		}
+
+		warn, safe := 5, 0
+		if s.Settings != nil {
+			if values, err := s.Settings.PlainByGroup(ctx, p.TenantID, "inventory"); err == nil {
+				warn = settings.DefaultWarningStockFromMap(values)
+				safe = settings.DefaultSafetyStockFromMap(values)
+				warn, safe = settings.CoalesceDefaultStockLines(warn, safe)
+			}
+		}
+		for _, line := range p.SKUs {
+			price := line.Price
+			if locked.SalePrice != nil {
+				value := *locked.SalePrice
+				price = &value
+			}
+			row := ProductSKU{
+				ProductID: locked.ID, SKUCode: strings.TrimSpace(line.SKUCode), SKUName: strings.TrimSpace(line.SKUName),
+				Attrs: datatypes.JSON(line.Attrs), Price: price, CostPrice: line.CostPrice, Stock: line.Stock,
+				ImageURL: strings.TrimSpace(line.ImageURL), RawData: datatypes.JSON(line.RawSKU), WarningStock: warn, SafetyStock: safe,
+			}
+			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Preload("Images").Preload("SKUs").First(&out, "id = ?", locked.ID).Error
+	})
+	return &out, err
+}
+
 func (s *Service) importDraftCore(ctx context.Context, adminID *uuid.UUID, p ImportDraftParams) (*Product, error) {
 	title := strings.TrimSpace(p.Title)
 	if title == "" {
@@ -775,8 +876,9 @@ func (s *Service) importDraftCore(ctx context.Context, adminID *uuid.UUID, p Imp
 	var out *Product
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		pr := &Product{
-			TenantID:      0,
-			CreatedBy:     adminID,
+			TenantID:        p.TenantID,
+			SourceProductID: p.SourceProductID,
+			CreatedBy:       adminID,
 			Source:        strings.TrimSpace(p.Source),
 			SourceURL:     strings.TrimSpace(p.SourceURL),
 			OriginalTitle: title,
