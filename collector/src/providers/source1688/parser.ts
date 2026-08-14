@@ -48,6 +48,7 @@ import {
   trimStr,
 } from './utils.js';
 import { parse1688SkuSelectorModel, skuPriceRange } from './sku-selector-model.js';
+import { parse1688FreightEvidence, type FreightScenario } from './freight.js';
 
 function normalizeAndFilterImg(raw: string, baseUrl: string, out: string[]): void {
   const abs = normalizeImageUrl(raw, baseUrl);
@@ -502,6 +503,7 @@ function stripEvaluatePayload(payload: BrowserExtractPayload & { __blocked__?: n
 export function assembleParsedProduct(
   inputUrl: string,
   payloadUnclean: BrowserExtractPayload & { __blocked__?: number },
+  freightScenario: FreightScenario = {},
 ): Parse1688Result & { blocked?: boolean } {
   const { blocked, payload } = stripEvaluatePayload(payloadUnclean);
 
@@ -692,6 +694,7 @@ export function assembleParsedProduct(
     networkSkuCount: networkSkus.length,
     networkSkuPriceRange: networkPriceRange,
   };
+  const freight = parse1688FreightEvidence(payload.domFreightTexts ?? [], freightScenario);
 
   let collectStatus: 'success' | 'partial_success' = 'success';
   if (missingFields.length > 0) {
@@ -731,6 +734,7 @@ export function assembleParsedProduct(
     networkSkuSelector: networkSkus.length > 0
       ? { source: 'queryofferskuselectormodel', skuCount: networkSkus.length, priceRange: networkPriceRange }
       : undefined,
+    freight,
     scriptDigest: truncate(
       payload.scriptSnippets
         .slice(0, 2)
@@ -746,6 +750,7 @@ export function assembleParsedProduct(
     descriptionImages,
     attributes: safeAttrs,
     skus,
+    freight,
     raw,
     blocked,
     collectStatus,

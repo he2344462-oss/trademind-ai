@@ -30,7 +30,7 @@ func TestCandidateAnalysisBatchOperationsIntegration(t *testing.T) {
 	}
 	harness := postgrestest.Require(t)
 	require.NoError(t, harness.DB.AutoMigrate(
-		&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &PricingProfile{}, &PricingProfileRevision{},
+		&SourceProduct{}, &SourceProductFreightSnapshot{}, &Candidate{}, &CandidateAnalysis{}, &PricingProfile{}, &PricingProfileRevision{},
 		&MarketSignalSnapshot{}, &CandidateAnalysisBatch{}, &CandidateAnalysisBatchItem{}, &ListingDraft{}, &ListingPerformanceSnapshot{}, &SelectionOutcomeEvaluation{}, &SelectionConfig{},
 		&product.Product{}, &product.ProductImage{}, &product.ProductSKU{},
 	))

@@ -1,7 +1,7 @@
 import { DollarOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
 import { TmPageContainer } from '@/components/ui';
-import { Button, Col, Divider, Form, InputNumber, Row, Select, Switch, Typography, message } from 'antd';
+import { Alert, Button, Col, Divider, Form, Input, InputNumber, Row, Select, Switch, Typography, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import {
   MARKUP_TYPE_OPTIONS,
@@ -28,7 +28,17 @@ function boolStr(b: unknown): string {
 
 function buildPutItems(values: Record<string, unknown>): SettingPutItem[] {
   const tenantId = 0;
-  const rows: Array<{ key: string; val: string }> = [
+  const rows: Array<{ key: string; val: string; group?: string }> = [
+    {
+      key: 'default_purchase_destination',
+      val: String(values.default_purchase_destination ?? '').trim(),
+      group: 'procurement',
+    },
+    {
+      key: 'default_purchase_quantity',
+      val: String(parseNum(values.default_purchase_quantity, 1)),
+      group: 'procurement',
+    },
     { key: 'default_markup_type', val: String(values.default_markup_type ?? 'percent') },
     { key: 'default_markup_percent', val: String(parseNum(values.default_markup_percent, 30)) },
     { key: 'default_markup_amount', val: String(parseNum(values.default_markup_amount, 0)) },
@@ -50,7 +60,7 @@ function buildPutItems(values: Record<string, unknown>): SettingPutItem[] {
   ];
   return rows.map((r) => ({
     tenantId,
-    groupKey: GROUP,
+    groupKey: r.group || GROUP,
     itemKey: r.key,
     itemValue: r.val,
     valueType: 'string',
@@ -68,7 +78,10 @@ export default function PricingSettingsPage() {
     try {
       const { items } = await fetchSettingsList();
       const g = pickGroup(items, GROUP);
+      const procurement = pickGroup(items, 'procurement');
       form.setFieldsValue({
+        default_purchase_destination: procurement.default_purchase_destination ?? '',
+        default_purchase_quantity: parseNum(procurement.default_purchase_quantity, 1),
         default_markup_type: g.default_markup_type ?? 'percent',
         default_markup_percent: parseNum(g.default_markup_percent, 30),
         default_markup_amount: parseNum(g.default_markup_amount, 0),
@@ -132,6 +145,21 @@ export default function PricingSettingsPage() {
             }
           }}
         >
+          <ProCard variant="outlined" title="默认采购场景" className="tm-system-settings__panel">
+            <Alert style={{ marginBottom: 16 }} type="info" showIcon message="用于采集采购运费" description="系统只采用页面可验证的实际运费；无法确认时保持未知，不会用经验值冒充真实运费。" />
+            <Row gutter={[24, 0]}>
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="default_purchase_destination" label="默认采购收货地区" extra="例如天津；请按实际采购收货地区填写，业务代码不会硬编码地区。">
+                  <Input maxLength={120} placeholder="请输入实际收货地区" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="default_purchase_quantity" label="默认测试采购数量" rules={[{ required: true }]}>
+                  <InputNumber min={1} max={100000} precision={0} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </ProCard>
           <ProCard
             variant="outlined"
             title="默认定价规则"

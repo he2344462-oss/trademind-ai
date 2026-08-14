@@ -352,13 +352,42 @@ func (s *Service) MarkListingReady(ctx context.Context, tenantID int64, id uuid.
 	_ = s.DB.WithContext(ctx).Model(&ListingAsset{}).Where("tenant_id=? AND listing_draft_id=? AND excluded=false AND cache_path<>''", tenantID, id).Count(&cachedImages).Error
 	var skus []any
 	_ = json.Unmarshal(listing.PlatformSKUData, &skus)
-	if cv.ReviewStatus != "approved" || strings.TrimSpace(cv.Title) == "" || strings.TrimSpace(cv.Description) == "" || cachedImages == 0 || listing.SalePrice == nil || *listing.SalePrice <= 0 || listing.EstimatedProfit == nil || *listing.EstimatedProfit <= 0 || len(blockers) > 0 {
+	if listing.SalePrice == nil || *listing.SalePrice <= 0 {
+		return nil, fmt.Errorf("%w: publish checklist failed (approved content, title, description, image, price, sku/pricing and positive profit required)", ErrValidation)
+	}
+	catalog, err := s.GetCatalog(ctx, tenantID, listing.CatalogProductID)
+	if err != nil {
+		return nil, err
+	}
+	var previousPricing pricingengine.PricingResult
+	if err = json.Unmarshal(listing.PricingSnapshot, &previousPricing); err != nil {
+		return nil, fmt.Errorf("%w: invalid pricing snapshot", ErrValidation)
+	}
+	salePrice, _, err := pricingengine.MoneyFromLegacyFloat(listing.SalePrice)
+	if err != nil {
+		return nil, err
+	}
+	pricingInput, err := s.catalogPricingInput(ctx, tenantID, catalog, listing.Platform, previousPricing.Profile, &salePrice)
+	if err != nil {
+		return nil, err
+	}
+	currentPricing, err := pricingengine.Calculate(pricingInput)
+	if err != nil {
+		return nil, err
+	}
+	if cv.ReviewStatus != "approved" || strings.TrimSpace(cv.Title) == "" || strings.TrimSpace(cv.Description) == "" || cachedImages == 0 || listing.EstimatedProfit == nil || *listing.EstimatedProfit <= 0 || currentPricing.EstimatedProfit <= 0 || len(blockers) > 0 {
 		return nil, fmt.Errorf("%w: publish checklist failed (approved content, title, description, image, price, sku/pricing and positive profit required)", ErrValidation)
 	}
 	if len(skus) == 0 {
 		return nil, fmt.Errorf("%w: listing sku required", ErrValidation)
 	}
-	if err = s.DB.WithContext(ctx).Model(listing).Update("publish_status", ListingStatusReadyToPublish).Error; err != nil {
+	pricingSnapshot, _ := json.Marshal(currentPricing)
+	if err = s.DB.WithContext(ctx).Model(listing).Updates(map[string]any{
+		"publish_status":   ListingStatusReadyToPublish,
+		"estimated_profit": moneyFloat(currentPricing.EstimatedProfit),
+		"estimated_margin": bpsFloat(currentPricing.EstimatedMarginBPS),
+		"pricing_snapshot": pricingSnapshot,
+	}).Error; err != nil {
 		return nil, err
 	}
 	return s.GetListingDraft(ctx, tenantID, id)

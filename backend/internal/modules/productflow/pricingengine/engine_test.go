@@ -55,3 +55,20 @@ func TestPlatformProfilesProduceDifferentResults(t *testing.T) {
 	require.NoError(t, e)
 	require.Greater(t, tr.SuggestedSalePrice, xr.SuggestedSalePrice)
 }
+
+func TestUnknownFreightIsExplicitlyExcludedFromProfit(t *testing.T) {
+	r, err := Calculate(CostInput{PurchaseCost: mustMoney(t, "6.50"), FreightStatus: "unknown", PackagingCost: mustMoney(t, "0.50"), OtherCost: mustMoney(t, "0.50"), ExpectedReturnLoss: mustMoney(t, "1.50"), TargetProfit: mustMoney(t, "10.00"), Profile: DefaultProfile("xianyu")})
+	require.NoError(t, err)
+	require.False(t, r.FreightIncluded)
+	require.Equal(t, "excluding_freight", r.ProfitBasis)
+	require.Equal(t, "9.00", r.EstimatedTotalCost.String())
+	require.Contains(t, r.Warnings, "采购运费待确认：当前利润未包含可靠采购运费，仅供初筛")
+}
+
+func TestHighestSKUPurchaseCostPlusFreight(t *testing.T) {
+	r, err := Calculate(CostInput{PurchaseCost: mustMoney(t, "6.50"), FreightCost: mustMoney(t, "2.00"), FreightStatus: "verified", FreightConfidenceBPS: 10000, PackagingCost: mustMoney(t, "0.50"), OtherCost: mustMoney(t, "0.50"), ExpectedReturnLoss: mustMoney(t, "1.50"), TargetProfit: mustMoney(t, "10.00"), Profile: DefaultProfile("xianyu")})
+	require.NoError(t, err)
+	require.True(t, r.FreightIncluded)
+	require.Equal(t, "11.00", r.EstimatedTotalCost.String())
+	require.Equal(t, "21.00", r.SuggestedSalePrice.String())
+}

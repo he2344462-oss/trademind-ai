@@ -28,6 +28,7 @@ import (
 	"github.com/trademind-ai/trademind/backend/internal/modules/performance"
 	"github.com/trademind-ai/trademind/backend/internal/modules/product"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productflow"
+	"github.com/trademind-ai/trademind/backend/internal/modules/productflow/pricingengine"
 	"github.com/trademind-ai/trademind/backend/internal/modules/productpublish"
 	"github.com/trademind-ai/trademind/backend/internal/modules/release"
 	"github.com/trademind-ai/trademind/backend/internal/modules/restore"
@@ -103,6 +104,44 @@ func migrateLegacyProductTextColumns(db *gorm.DB) error {
 	return db.AutoMigrate(&product.Product{})
 }
 
+func migrateLegacyFreightState(db *gorm.DB) error {
+	var sources []productflow.SourceProduct
+	if err := db.Where("freight IS NOT NULL AND (freight_status = ? OR freight_status = '')", productflow.FreightStatusUnknown).Find(&sources).Error; err != nil {
+		return err
+	}
+	for _, row := range sources {
+		if row.Freight == nil {
+			continue
+		}
+		money, _, err := pricingengine.MoneyFromLegacyFloat(row.Freight)
+		if err != nil {
+			return err
+		}
+		cents := int64(money)
+		if err := db.Model(&row).Updates(map[string]any{"freight_status": productflow.FreightStatusVerified, "freight_amount": cents, "freight_currency": "CNY", "freight_quantity": 1, "freight_source": "legacy_operator", "freight_confidence_bps": 10000, "freight_calculation_method": "legacy_operator_value"}).Error; err != nil {
+			return err
+		}
+	}
+	var products []product.Product
+	if err := db.Where("freight_cost IS NOT NULL AND (freight_status = ? OR freight_status = '')", productflow.FreightStatusUnknown).Find(&products).Error; err != nil {
+		return err
+	}
+	for _, row := range products {
+		if row.FreightCost == nil {
+			continue
+		}
+		money, _, err := pricingengine.MoneyFromLegacyFloat(row.FreightCost)
+		if err != nil {
+			return err
+		}
+		cents := int64(money)
+		if err := db.Model(&row).Updates(map[string]any{"freight_status": productflow.FreightStatusVerified, "freight_amount": cents, "freight_currency": "CNY", "freight_quantity": 1, "freight_source": "legacy_operator", "freight_confidence_bps": 10000, "freight_calculation_method": "legacy_operator_value"}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // AutoMigrate applies schema for core foundation tables.
 func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
@@ -139,6 +178,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&product.ProductAIContentApplication{},
 		&product.ProductImageApplication{},
 		&productflow.SourceProduct{},
+		&productflow.SourceProductFreightSnapshot{},
 		&productflow.Candidate{},
 		&productflow.CandidateAnalysis{},
 		&productflow.ListingDraft{},
@@ -215,6 +255,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&performance.QuotaPolicy{},
 	); err != nil {
 		return err
+	}
+	if err := migrateLegacyFreightState(db); err != nil {
+		return fmt.Errorf("migrate legacy freight state: %w", err)
 	}
 	if err := operationtask.Migrate(db); err != nil {
 		return err

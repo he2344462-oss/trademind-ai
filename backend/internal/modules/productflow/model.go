@@ -9,6 +9,11 @@ import (
 )
 
 const (
+	FreightStatusVerified     = "verified"
+	FreightStatusEstimated    = "estimated"
+	FreightStatusFreeShipping = "free_shipping"
+	FreightStatusUnknown      = "unknown"
+
 	SourceStatusCollected = "collected"
 	SourceStatusCandidate = "candidate"
 	SourceStatusApproved  = "approved"
@@ -62,26 +67,59 @@ const (
 // SourceProduct preserves the original supplier-platform payload before any operating edits.
 type SourceProduct struct {
 	model.Base
-	TenantID            int64          `gorm:"not null;default:0;uniqueIndex:idx_source_product_identity,priority:1;index" json:"tenantId"`
-	SourcePlatform      string         `gorm:"size:64;not null;uniqueIndex:idx_source_product_identity,priority:2;index" json:"sourcePlatform"`
-	SourceProductID     string         `gorm:"size:256;not null;uniqueIndex:idx_source_product_identity,priority:3" json:"sourceProductId"`
-	SourceURL           string         `gorm:"size:2048;not null" json:"sourceUrl"`
-	SupplierID          string         `gorm:"size:256;index" json:"supplierId,omitempty"`
-	SupplierName        string         `gorm:"size:256;index" json:"supplierName,omitempty"`
-	OriginalTitle       string         `gorm:"size:512;not null;index" json:"originalTitle"`
-	OriginalDescription string         `gorm:"type:text" json:"originalDescription,omitempty"`
-	OriginalImages      datatypes.JSON `gorm:"type:jsonb" json:"originalImages,omitempty"`
-	OriginalCategory    string         `gorm:"size:256;index" json:"originalCategory,omitempty"`
-	SourcePrice         *float64       `gorm:"type:numeric(18,2)" json:"sourcePrice,omitempty"`
-	Freight             *float64       `gorm:"type:numeric(18,2)" json:"freight,omitempty"`
-	MinOrderQuantity    int            `gorm:"not null;default:1" json:"minOrderQuantity"`
-	SKUData             datatypes.JSON `gorm:"type:jsonb" json:"skuData,omitempty"`
-	RawData             datatypes.JSON `gorm:"type:jsonb" json:"rawData,omitempty"`
-	CollectedAt         time.Time      `gorm:"index;not null" json:"collectedAt"`
-	Status              string         `gorm:"size:32;index;not null;default:collected" json:"status"`
+	TenantID                 int64          `gorm:"not null;default:0;uniqueIndex:idx_source_product_identity,priority:1;index" json:"tenantId"`
+	SourcePlatform           string         `gorm:"size:64;not null;uniqueIndex:idx_source_product_identity,priority:2;index" json:"sourcePlatform"`
+	SourceProductID          string         `gorm:"size:256;not null;uniqueIndex:idx_source_product_identity,priority:3" json:"sourceProductId"`
+	SourceURL                string         `gorm:"size:2048;not null" json:"sourceUrl"`
+	SupplierID               string         `gorm:"size:256;index" json:"supplierId,omitempty"`
+	SupplierName             string         `gorm:"size:256;index" json:"supplierName,omitempty"`
+	OriginalTitle            string         `gorm:"size:512;not null;index" json:"originalTitle"`
+	OriginalDescription      string         `gorm:"type:text" json:"originalDescription,omitempty"`
+	OriginalImages           datatypes.JSON `gorm:"type:jsonb" json:"originalImages,omitempty"`
+	OriginalCategory         string         `gorm:"size:256;index" json:"originalCategory,omitempty"`
+	SourcePrice              *float64       `gorm:"type:numeric(18,2)" json:"sourcePrice,omitempty"`
+	Freight                  *float64       `gorm:"type:numeric(18,2)" json:"freight,omitempty"`
+	FreightStatus            string         `gorm:"size:32;not null;default:unknown;index" json:"freightStatus"`
+	FreightAmount            *int64         `gorm:"type:bigint" json:"freightAmountCents,omitempty"`
+	FreightOrderAmount       *int64         `gorm:"type:bigint" json:"freightOrderAmountCents,omitempty"`
+	FreightCurrency          string         `gorm:"size:16;not null;default:CNY" json:"freightCurrency"`
+	FreightDestination       string         `gorm:"size:256" json:"freightDestination,omitempty"`
+	FreightQuantity          int            `gorm:"not null;default:1" json:"freightQuantity"`
+	FreightSource            string         `gorm:"size:128" json:"freightSource,omitempty"`
+	FreightConfidenceBPS     int64          `gorm:"not null;default:0" json:"freightConfidenceBps"`
+	FreightObservedAt        *time.Time     `gorm:"index" json:"freightObservedAt,omitempty"`
+	FreightRawSnapshot       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"freightRawSnapshot"`
+	FreightCalculationMethod string         `gorm:"size:128" json:"freightCalculationMethod,omitempty"`
+	MinOrderQuantity         int            `gorm:"not null;default:1" json:"minOrderQuantity"`
+	SKUData                  datatypes.JSON `gorm:"type:jsonb" json:"skuData,omitempty"`
+	RawData                  datatypes.JSON `gorm:"type:jsonb" json:"rawData,omitempty"`
+	CollectedAt              time.Time      `gorm:"index;not null" json:"collectedAt"`
+	Status                   string         `gorm:"size:32;index;not null;default:collected" json:"status"`
 }
 
 func (SourceProduct) TableName() string { return "source_products" }
+
+// SourceProductFreightSnapshot is immutable supplier freight evidence. The
+// monetary columns are integer cents and never use floating point arithmetic.
+type SourceProductFreightSnapshot struct {
+	model.HardDeleteBase
+	TenantID          int64          `gorm:"not null;default:0;index" json:"tenantId"`
+	SourceProductID   uuid.UUID      `gorm:"type:char(36);not null;index" json:"sourceProductId"`
+	Status            string         `gorm:"size:32;not null;index" json:"status"`
+	FreightAmount     *int64         `gorm:"type:bigint" json:"freightAmountCents,omitempty"`
+	OrderFreight      *int64         `gorm:"type:bigint" json:"orderFreightCents,omitempty"`
+	Currency          string         `gorm:"size:16;not null;default:CNY" json:"currency"`
+	Destination       string         `gorm:"size:256;index" json:"destination,omitempty"`
+	Quantity          int            `gorm:"not null;default:1" json:"quantity"`
+	Source            string         `gorm:"size:128;not null;index" json:"source"`
+	ConfidenceBPS     int64          `gorm:"not null;default:0" json:"confidenceBps"`
+	ObservedAt        time.Time      `gorm:"not null;index" json:"observedAt"`
+	RawSnapshot       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"rawSnapshot"`
+	CalculationMethod string         `gorm:"size:128;not null" json:"calculationMethod"`
+	Fingerprint       string         `gorm:"size:64;not null;uniqueIndex" json:"fingerprint"`
+}
+
+func (SourceProductFreightSnapshot) TableName() string { return "source_product_freight_snapshots" }
 
 // Candidate records the human selection workflow and reserved scoring dimensions.
 type Candidate struct {

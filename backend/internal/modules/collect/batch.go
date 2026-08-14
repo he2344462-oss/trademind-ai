@@ -240,6 +240,8 @@ func (s *Service) CreateBatchAsync(c *gin.Context, body CreateBatchBody, adminID
 				reqOpts = s.buildPinduoduoRequestOptions(ctx, u, true)
 			} else if isTaobaoTmallCollectSource(source) {
 				reqOpts = s.buildTaobaoTmallRequestOptions(ctx, u, true)
+			} else if strings.EqualFold(source, "1688") {
+				reqOpts = s.buildFreightRequestOptions(ctx, 0)
 			}
 			task := CollectTask{
 				BatchID:        &bid,

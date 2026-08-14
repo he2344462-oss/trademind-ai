@@ -232,8 +232,8 @@ type DetailDTO struct {
 
 // ImportDraftParams converts collector output into a product draft (no collect package import).
 type ImportDraftParams struct {
-	TenantID        int64
-	SourceProductID *uuid.UUID
+	TenantID           int64
+	SourceProductID    *uuid.UUID
 	Source             string
 	SourceURL          string
 	Title              string
@@ -243,6 +243,20 @@ type ImportDraftParams struct {
 	DescriptionImages  []string
 	SKUs               []ImportSKUParams
 	FullNormalizedJSON json.RawMessage
+	Freight            FreightImportParams
+}
+
+type FreightImportParams struct {
+	Status            string
+	AmountCents       *int64
+	OrderAmountCents  *int64
+	Currency          string
+	Destination       string
+	Quantity          int
+	Source            string
+	ConfidenceBPS     int64
+	ObservedAt        *time.Time
+	CalculationMethod string
 }
 
 // ImportSKUParams is one SKU line from a normalized product.

@@ -20,7 +20,7 @@ func TestSprint5RealDataCalibrationIntegration(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL is required")
 	}
 	harness := postgrestest.Require(t)
-	require.NoError(t, harness.DB.AutoMigrate(&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &PricingProfile{}, &PricingProfileRevision{}, &MarketSignalSnapshot{}, &MarketSignalProviderConfig{}, &ListingPerformanceSnapshot{}, &SelectionOutcomeEvaluation{}, &SelectionConfig{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
+	require.NoError(t, harness.DB.AutoMigrate(&SourceProduct{}, &SourceProductFreightSnapshot{}, &Candidate{}, &CandidateAnalysis{}, &PricingProfile{}, &PricingProfileRevision{}, &MarketSignalSnapshot{}, &MarketSignalProviderConfig{}, &ListingPerformanceSnapshot{}, &SelectionOutcomeEvaluation{}, &SelectionConfig{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
 	svc := &Service{DB: harness.DB}
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)

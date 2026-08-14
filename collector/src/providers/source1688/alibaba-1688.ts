@@ -219,10 +219,14 @@ async function extractAssembledWithNetworkSku(
   page: Page,
   sourceUrl: string,
   skuSelectorModel: unknown,
+  options?: Record<string, unknown>,
 ): Promise<Parse1688Result & { blocked?: boolean }> {
   const payload = await extractBrowserPayload(page);
   payload.networkSkuSelectorModel = skuSelectorModel;
-  return assembleParsedProduct(sourceUrl, payload);
+  return assembleParsedProduct(sourceUrl, payload, {
+    destination: typeof options?.freightDestination === 'string' ? options.freightDestination : undefined,
+    quantity: typeof options?.freightQuantity === 'number' ? options.freightQuantity : undefined,
+  });
 }
 
 class Alibaba1688Provider implements CollectorProvider {
@@ -295,12 +299,12 @@ class Alibaba1688Provider implements CollectorProvider {
         }
 
         const onOfferPath = isLikelyOfferPath(finalHref);
-        let assembled = await extractAssembledWithNetworkSku(page, sourceUrl, skuSelectorCapture.get());
+        let assembled = await extractAssembledWithNetworkSku(page, sourceUrl, skuSelectorCapture.get(), input.options);
 
         if (assembled.mainImages.length === 0) {
           await prepare1688OfferPage(page, batchMode);
           await Promise.allSettled(skuSelectorCapture.pending);
-          assembled = await extractAssembledWithNetworkSku(page, sourceUrl, skuSelectorCapture.get());
+          assembled = await extractAssembledWithNetworkSku(page, sourceUrl, skuSelectorCapture.get(), input.options);
         }
 
         const missing = fieldMissingSummary(assembled);
@@ -373,6 +377,7 @@ class Alibaba1688Provider implements CollectorProvider {
           descriptionImages: assembled.descriptionImages,
           attributes: assembled.attributes,
           skus: assembled.skus,
+          freight: assembled.freight,
           raw: {
             ...assembled.raw,
             fieldMissing: missing,

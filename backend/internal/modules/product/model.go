@@ -40,31 +40,41 @@ const (
 // Product is a draft listing row (soft-deleted when removed).
 type Product struct {
 	model.Base
-	TenantID           int64          `gorm:"default:0;index;uniqueIndex:idx_products_source_product,priority:1;uniqueIndex:idx_products_candidate,priority:1" json:"tenantId"`
-	SourceProductID    *uuid.UUID     `gorm:"type:char(36);index;uniqueIndex:idx_products_source_product,priority:2" json:"sourceProductId,omitempty"`
-	CandidateID        *uuid.UUID     `gorm:"type:char(36);index;uniqueIndex:idx_products_candidate,priority:2" json:"candidateId,omitempty"`
-	CreatedBy          *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
-	Source             string         `gorm:"size:64;index;not null" json:"source"`
-	SourceURL          string         `gorm:"size:2048" json:"sourceUrl"`
-	OriginalTitle      string         `gorm:"size:512" json:"originalTitle"`
-	Title              string         `gorm:"size:512;index" json:"title"`
-	AITitle            string         `gorm:"column:ai_title;size:512" json:"aiTitle"`
-	Description        string         `gorm:"type:text" json:"description"`
-	AIDescription      string         `gorm:"column:ai_description;type:text" json:"aiDescription"`
-	Currency           string         `gorm:"size:16" json:"currency"`
-	Status             string         `gorm:"size:32;index;not null" json:"status"`
-	CatalogStatus      string         `gorm:"size:32;index;not null;default:draft" json:"catalogStatus"`
-	Category           string         `gorm:"size:256;index" json:"category,omitempty"`
-	Supplier           string         `gorm:"size:256;index" json:"supplier,omitempty"`
-	PurchaseCost       *float64       `gorm:"type:numeric(18,2)" json:"purchaseCost,omitempty"`
-	FreightCost        *float64       `gorm:"type:numeric(18,2)" json:"freightCost,omitempty"`
-	PackagingCost      *float64       `gorm:"type:numeric(18,2)" json:"packagingCost,omitempty"`
-	OtherCost          *float64       `gorm:"type:numeric(18,2)" json:"otherCost,omitempty"`
-	SuggestedSalePrice *float64       `gorm:"type:numeric(18,2)" json:"suggestedSalePrice,omitempty"`
-	SalePrice          *float64       `gorm:"type:numeric(18,2)" json:"salePrice,omitempty"`
-	EstimatedProfit    *float64       `gorm:"type:numeric(18,2)" json:"estimatedProfit,omitempty"`
-	EstimatedMargin    *float64       `gorm:"type:numeric(8,4)" json:"estimatedMargin,omitempty"`
-	RawData            datatypes.JSON `gorm:"type:jsonb" json:"rawData,omitempty"`
+	TenantID                 int64          `gorm:"default:0;index;uniqueIndex:idx_products_source_product,priority:1;uniqueIndex:idx_products_candidate,priority:1" json:"tenantId"`
+	SourceProductID          *uuid.UUID     `gorm:"type:char(36);index;uniqueIndex:idx_products_source_product,priority:2" json:"sourceProductId,omitempty"`
+	CandidateID              *uuid.UUID     `gorm:"type:char(36);index;uniqueIndex:idx_products_candidate,priority:2" json:"candidateId,omitempty"`
+	CreatedBy                *uuid.UUID     `gorm:"type:char(36);index" json:"createdBy,omitempty"`
+	Source                   string         `gorm:"size:64;index;not null" json:"source"`
+	SourceURL                string         `gorm:"size:2048" json:"sourceUrl"`
+	OriginalTitle            string         `gorm:"size:512" json:"originalTitle"`
+	Title                    string         `gorm:"size:512;index" json:"title"`
+	AITitle                  string         `gorm:"column:ai_title;size:512" json:"aiTitle"`
+	Description              string         `gorm:"type:text" json:"description"`
+	AIDescription            string         `gorm:"column:ai_description;type:text" json:"aiDescription"`
+	Currency                 string         `gorm:"size:16" json:"currency"`
+	Status                   string         `gorm:"size:32;index;not null" json:"status"`
+	CatalogStatus            string         `gorm:"size:32;index;not null;default:draft" json:"catalogStatus"`
+	Category                 string         `gorm:"size:256;index" json:"category,omitempty"`
+	Supplier                 string         `gorm:"size:256;index" json:"supplier,omitempty"`
+	PurchaseCost             *float64       `gorm:"type:numeric(18,2)" json:"purchaseCost,omitempty"`
+	FreightCost              *float64       `gorm:"type:numeric(18,2)" json:"freightCost,omitempty"`
+	FreightStatus            string         `gorm:"size:32;not null;default:unknown;index" json:"freightStatus"`
+	FreightAmount            *int64         `gorm:"type:bigint" json:"freightAmountCents,omitempty"`
+	FreightOrderAmount       *int64         `gorm:"type:bigint" json:"freightOrderAmountCents,omitempty"`
+	FreightCurrency          string         `gorm:"size:16;not null;default:CNY" json:"freightCurrency"`
+	FreightDestination       string         `gorm:"size:256" json:"freightDestination,omitempty"`
+	FreightQuantity          int            `gorm:"not null;default:1" json:"freightQuantity"`
+	FreightSource            string         `gorm:"size:128" json:"freightSource,omitempty"`
+	FreightConfidenceBPS     int64          `gorm:"not null;default:0" json:"freightConfidenceBps"`
+	FreightObservedAt        *time.Time     `json:"freightObservedAt,omitempty"`
+	FreightCalculationMethod string         `gorm:"size:128" json:"freightCalculationMethod,omitempty"`
+	PackagingCost            *float64       `gorm:"type:numeric(18,2)" json:"packagingCost,omitempty"`
+	OtherCost                *float64       `gorm:"type:numeric(18,2)" json:"otherCost,omitempty"`
+	SuggestedSalePrice       *float64       `gorm:"type:numeric(18,2)" json:"suggestedSalePrice,omitempty"`
+	SalePrice                *float64       `gorm:"type:numeric(18,2)" json:"salePrice,omitempty"`
+	EstimatedProfit          *float64       `gorm:"type:numeric(18,2)" json:"estimatedProfit,omitempty"`
+	EstimatedMargin          *float64       `gorm:"type:numeric(8,4)" json:"estimatedMargin,omitempty"`
+	RawData                  datatypes.JSON `gorm:"type:jsonb" json:"rawData,omitempty"`
 
 	Images []ProductImage `gorm:"foreignKey:ProductID" json:"images,omitempty"`
 	SKUs   []ProductSKU   `gorm:"foreignKey:ProductID" json:"skus,omitempty"`

@@ -823,6 +823,27 @@ func (s *Service) refreshCollectedDraftCore(ctx context.Context, existing *Produ
 			"raw_data":       datatypes.JSON(p.FullNormalizedJSON),
 			"purchase_cost":  purchaseCost,
 		}
+		operatorFreight := (locked.FreightStatus == "verified" || locked.FreightStatus == "free_shipping") &&
+			(strings.HasPrefix(locked.FreightSource, "manual") || locked.FreightSource == "legacy_operator")
+		incomingKnown := p.Freight.Status != "" && p.Freight.Status != "unknown"
+		if !operatorFreight && (incomingKnown || locked.FreightStatus == "" || locked.FreightStatus == "unknown") {
+			var freightCost *float64
+			if p.Freight.AmountCents != nil {
+				value := float64(*p.Freight.AmountCents) / 100
+				freightCost = &value
+			}
+			updates["freight_cost"] = freightCost
+			updates["freight_status"] = p.Freight.Status
+			updates["freight_amount"] = p.Freight.AmountCents
+			updates["freight_order_amount"] = p.Freight.OrderAmountCents
+			updates["freight_currency"] = p.Freight.Currency
+			updates["freight_destination"] = p.Freight.Destination
+			updates["freight_quantity"] = p.Freight.Quantity
+			updates["freight_source"] = p.Freight.Source
+			updates["freight_confidence_bps"] = p.Freight.ConfidenceBPS
+			updates["freight_observed_at"] = p.Freight.ObservedAt
+			updates["freight_calculation_method"] = p.Freight.CalculationMethod
+		}
 		if p.SourceProductID != nil && locked.SourceProductID == nil {
 			updates["source_product_id"] = *p.SourceProductID
 		}
@@ -876,17 +897,40 @@ func (s *Service) importDraftCore(ctx context.Context, adminID *uuid.UUID, p Imp
 	var out *Product
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		pr := &Product{
-			TenantID:        p.TenantID,
-			SourceProductID: p.SourceProductID,
-			CreatedBy:       adminID,
-			Source:        strings.TrimSpace(p.Source),
-			SourceURL:     strings.TrimSpace(p.SourceURL),
-			OriginalTitle: title,
-			Title:         title,
-			Description:   strings.TrimSpace(p.Description),
-			Currency:      curr,
-			Status:        StatusDraft,
-			RawData:       raw,
+			TenantID:                 p.TenantID,
+			SourceProductID:          p.SourceProductID,
+			CreatedBy:                adminID,
+			Source:                   strings.TrimSpace(p.Source),
+			SourceURL:                strings.TrimSpace(p.SourceURL),
+			OriginalTitle:            title,
+			Title:                    title,
+			Description:              strings.TrimSpace(p.Description),
+			Currency:                 curr,
+			Status:                   StatusDraft,
+			RawData:                  raw,
+			FreightStatus:            p.Freight.Status,
+			FreightAmount:            p.Freight.AmountCents,
+			FreightOrderAmount:       p.Freight.OrderAmountCents,
+			FreightCurrency:          p.Freight.Currency,
+			FreightDestination:       p.Freight.Destination,
+			FreightQuantity:          p.Freight.Quantity,
+			FreightSource:            p.Freight.Source,
+			FreightConfidenceBPS:     p.Freight.ConfidenceBPS,
+			FreightObservedAt:        p.Freight.ObservedAt,
+			FreightCalculationMethod: p.Freight.CalculationMethod,
+		}
+		if p.Freight.AmountCents != nil {
+			value := float64(*p.Freight.AmountCents) / 100
+			pr.FreightCost = &value
+		}
+		if pr.FreightStatus == "" {
+			pr.FreightStatus = "unknown"
+		}
+		if pr.FreightCurrency == "" {
+			pr.FreightCurrency = "CNY"
+		}
+		if pr.FreightQuantity < 1 {
+			pr.FreightQuantity = 1
 		}
 		if pr.Source == "" {
 			pr.Source = "unknown"

@@ -58,7 +58,7 @@ func parseID(c *gin.Context) (uuid.UUID, bool) {
 func pageQuery(c *gin.Context) ListQuery {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-	q := ListQuery{Page: page, PageSize: size, Status: strings.TrimSpace(c.Query("status")), Platform: strings.TrimSpace(c.Query("platform")), Keyword: strings.TrimSpace(c.Query("keyword")), SortBy: strings.TrimSpace(c.Query("sortBy")), SortOrder: strings.TrimSpace(c.Query("sortOrder"))}
+	q := ListQuery{Page: page, PageSize: size, Status: strings.TrimSpace(c.Query("status")), Platform: strings.TrimSpace(c.Query("platform")), Keyword: strings.TrimSpace(c.Query("keyword")), SortBy: strings.TrimSpace(c.Query("sortBy")), SortOrder: strings.TrimSpace(c.Query("sortOrder")), FreightStatus: strings.TrimSpace(c.Query("freightStatus"))}
 	if v := strings.TrimSpace(c.Query("catalogProductId")); v != "" {
 		if id, e := uuid.Parse(v); e == nil {
 			q.CatalogID = &id

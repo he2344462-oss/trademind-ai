@@ -1,6 +1,9 @@
 package pricingengine
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Profile struct {
 	Code             string `json:"code"`
@@ -21,38 +24,45 @@ func DefaultProfile(platform string) Profile {
 }
 
 type CostInput struct {
-	Currency           string  `json:"currency"`
-	PurchaseCost       Money   `json:"purchaseCost"`
-	FreightCost        Money   `json:"freightCost"`
-	PackagingCost      Money   `json:"packagingCost"`
-	OtherCost          Money   `json:"otherCost"`
-	ExpectedReturnLoss Money   `json:"expectedReturnLoss"`
-	AfterSaleReserve   Money   `json:"afterSaleReserve"`
-	DiscountBuffer     Money   `json:"discountBuffer"`
-	CouponBuffer       Money   `json:"couponBuffer"`
-	TargetProfit       Money   `json:"targetProfit"`
-	TargetMarginBPS    int64   `json:"targetMarginBps"`
-	MinimumProfit      Money   `json:"minimumProfit"`
-	MinimumMarginBPS   int64   `json:"minimumMarginBps"`
-	SalePrice          *Money  `json:"salePrice,omitempty"`
-	Profile            Profile `json:"profile"`
+	Currency             string  `json:"currency"`
+	PurchaseCost         Money   `json:"purchaseCost"`
+	FreightCost          Money   `json:"freightCost"`
+	FreightStatus        string  `json:"freightStatus"`
+	FreightConfidenceBPS int64   `json:"freightConfidenceBps"`
+	PackagingCost        Money   `json:"packagingCost"`
+	OtherCost            Money   `json:"otherCost"`
+	ExpectedReturnLoss   Money   `json:"expectedReturnLoss"`
+	AfterSaleReserve     Money   `json:"afterSaleReserve"`
+	DiscountBuffer       Money   `json:"discountBuffer"`
+	CouponBuffer         Money   `json:"couponBuffer"`
+	TargetProfit         Money   `json:"targetProfit"`
+	TargetMarginBPS      int64   `json:"targetMarginBps"`
+	MinimumProfit        Money   `json:"minimumProfit"`
+	MinimumMarginBPS     int64   `json:"minimumMarginBps"`
+	SalePrice            *Money  `json:"salePrice,omitempty"`
+	Profile              Profile `json:"profile"`
 }
 
 type PricingResult struct {
-	Currency               string  `json:"currency"`
-	BaseCost               Money   `json:"baseCost"`
-	TotalFixedCost         Money   `json:"totalFixedCost"`
-	EstimatedPlatformFee   Money   `json:"estimatedPlatformFee"`
-	EstimatedPaymentFee    Money   `json:"estimatedPaymentFee"`
-	EstimatedAfterSaleLoss Money   `json:"estimatedAfterSaleLoss"`
-	EstimatedTotalCost     Money   `json:"estimatedTotalCost"`
-	BreakEvenPrice         Money   `json:"breakEvenPrice"`
-	MinimumSalePrice       Money   `json:"minimumSalePrice"`
-	SuggestedSalePrice     Money   `json:"suggestedSalePrice"`
-	EstimatedProfit        Money   `json:"estimatedProfit"`
-	EstimatedMarginBPS     int64   `json:"estimatedMarginBps"`
-	MarkupRateBPS          int64   `json:"markupRateBps"`
-	Profile                Profile `json:"profile"`
+	Currency               string   `json:"currency"`
+	BaseCost               Money    `json:"baseCost"`
+	TotalFixedCost         Money    `json:"totalFixedCost"`
+	EstimatedPlatformFee   Money    `json:"estimatedPlatformFee"`
+	EstimatedPaymentFee    Money    `json:"estimatedPaymentFee"`
+	EstimatedAfterSaleLoss Money    `json:"estimatedAfterSaleLoss"`
+	EstimatedTotalCost     Money    `json:"estimatedTotalCost"`
+	BreakEvenPrice         Money    `json:"breakEvenPrice"`
+	MinimumSalePrice       Money    `json:"minimumSalePrice"`
+	SuggestedSalePrice     Money    `json:"suggestedSalePrice"`
+	EstimatedProfit        Money    `json:"estimatedProfit"`
+	EstimatedMarginBPS     int64    `json:"estimatedMarginBps"`
+	MarkupRateBPS          int64    `json:"markupRateBps"`
+	Profile                Profile  `json:"profile"`
+	FreightStatus          string   `json:"freightStatus"`
+	FreightCost            Money    `json:"freightCost"`
+	FreightIncluded        bool     `json:"freightIncluded"`
+	ProfitBasis            string   `json:"profitBasis"`
+	Warnings               []string `json:"warnings"`
 }
 
 func ValidateProfile(p Profile) error {
@@ -70,6 +80,24 @@ func Calculate(in CostInput) (PricingResult, error) {
 	}
 	if err := ValidateProfile(in.Profile); err != nil {
 		return PricingResult{}, err
+	}
+	freightStatus := strings.ToLower(strings.TrimSpace(in.FreightStatus))
+	if freightStatus == "" {
+		// Backward compatible for callers that predate freight evidence.
+		freightStatus = "verified"
+		if in.FreightConfidenceBPS == 0 {
+			in.FreightConfidenceBPS = 10000
+		}
+	}
+	if freightStatus != "verified" && freightStatus != "estimated" && freightStatus != "free_shipping" && freightStatus != "unknown" {
+		return PricingResult{}, fmt.Errorf("invalid freight status")
+	}
+	freightIncluded := freightStatus != "unknown"
+	profitBasis := "complete"
+	warnings := []string{}
+	if !freightIncluded {
+		profitBasis = "excluding_freight"
+		warnings = append(warnings, "采购运费待确认：当前利润未包含可靠采购运费，仅供初筛")
 	}
 	for _, value := range []Money{in.PurchaseCost, in.FreightCost, in.PackagingCost, in.OtherCost, in.ExpectedReturnLoss, in.AfterSaleReserve, in.DiscountBuffer, in.CouponBuffer, in.TargetProfit, in.MinimumProfit} {
 		if value < 0 {
@@ -123,5 +151,5 @@ func Calculate(in CostInput) (PricingResult, error) {
 	if total != 0 {
 		markup = int64(profit) * 10000 / int64(total)
 	}
-	return PricingResult{Currency: in.Currency, BaseCost: base, TotalFixedCost: fixedBusiness, EstimatedPlatformFee: platformFee, EstimatedPaymentFee: paymentFee, EstimatedAfterSaleLoss: afterSale, EstimatedTotalCost: total, BreakEvenPrice: breakEven, MinimumSalePrice: minimum, SuggestedSalePrice: suggested, EstimatedProfit: profit, EstimatedMarginBPS: margin, MarkupRateBPS: markup, Profile: in.Profile}, nil
+	return PricingResult{Currency: in.Currency, BaseCost: base, TotalFixedCost: fixedBusiness, EstimatedPlatformFee: platformFee, EstimatedPaymentFee: paymentFee, EstimatedAfterSaleLoss: afterSale, EstimatedTotalCost: total, BreakEvenPrice: breakEven, MinimumSalePrice: minimum, SuggestedSalePrice: suggested, EstimatedProfit: profit, EstimatedMarginBPS: margin, MarkupRateBPS: markup, Profile: in.Profile, FreightStatus: freightStatus, FreightCost: in.FreightCost, FreightIncluded: freightIncluded, ProfitBasis: profitBasis, Warnings: warnings}, nil
 }

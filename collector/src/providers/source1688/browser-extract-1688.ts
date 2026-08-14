@@ -286,6 +286,25 @@ export function extract1688DomInPage(arg: Extract1688DomArg): Extract1688DomResu
       if (t && /¥|￥|批发|起批|价格/.test(t) && t.length < 200) domPriceTexts.push(t);
     });
 
+  const domFreightTexts: string[] = [];
+  document
+    .querySelectorAll(
+      '[class*="freight"], [class*="shipping"], [class*="delivery"], [class*="logistics"], [class*="postage"], [class*="transport"]',
+    )
+    .forEach((el) => {
+      const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+      if (text && text.length <= 300 && /运费|包邮|免运费|快递费|物流费|配送费|发货地|送至/.test(text)) {
+        domFreightTexts.push(text);
+      }
+    });
+  document.querySelectorAll('span, div, li, p').forEach((el) => {
+    if (el.children.length > 4) return;
+    const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (text.length > 0 && text.length <= 180 && /运费|包邮|免运费|快递费|物流费|配送费|送至/.test(text)) {
+      domFreightTexts.push(text);
+    }
+  });
+
   const paramPairs: Array<{ key: string; value: string }> = [];
   for (const sel of attrSel) {
     document.querySelectorAll(sel).forEach((node) => {
@@ -403,6 +422,7 @@ export function extract1688DomInPage(arg: Extract1688DomArg): Extract1688DomResu
     paramPairs,
     domSkuDimensions,
     domSkuTableRows,
+    domFreightTexts: dedupeLocal(domFreightTexts).slice(0, 20),
     scriptSnippets: snippets,
     __blocked__: blocked ? 1 : 0,
   };

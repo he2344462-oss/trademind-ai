@@ -73,6 +73,7 @@ type CollectedSourceInput struct {
 	SKUs            any
 	RawData         json.RawMessage
 	SourcePrice     *float64
+	Freight         *FreightEvidenceInput
 }
 
 func StableSourceProductID(platform, sourceURL string) string {
@@ -161,6 +162,9 @@ func (s *Service) UpsertCollectedSource(ctx context.Context, in CollectedSourceI
 	err = s.DB.WithContext(ctx).
 		Where("tenant_id = ? AND source_platform = ? AND source_product_id = ?", in.TenantID, platform, sourceID).
 		First(&persisted).Error
+	if err == nil && in.Freight != nil {
+		err = s.persistFreightEvidence(ctx, &persisted, *in.Freight)
+	}
 	return &persisted, err
 }
 
@@ -186,12 +190,68 @@ func (s *Service) CreateSource(ctx context.Context, tenantID int64, body CreateS
 	if body.MinOrderQuantity == 0 {
 		body.MinOrderQuantity = 1
 	}
+	freightStatus := strings.TrimSpace(body.FreightStatus)
+	if freightStatus == "" {
+		if body.Freight != nil {
+			freightStatus = FreightStatusVerified
+		} else {
+			freightStatus = FreightStatusUnknown
+		}
+	}
+	var freightEvidence *FreightEvidenceInput
+	if body.FreightStatus != "" || body.Freight != nil || body.FreightAmount != "" {
+		var unit, order *int64
+		if body.FreightAmount != "" {
+			parsed, parseErr := ParseFreightMoney(body.FreightAmount)
+			if parseErr != nil {
+				return nil, fmt.Errorf("%w: invalid freight amount", ErrValidation)
+			}
+			value := int64(parsed)
+			unit = &value
+		}
+		if body.FreightOrderAmount != "" {
+			parsed, parseErr := ParseFreightMoney(body.FreightOrderAmount)
+			if parseErr != nil {
+				return nil, fmt.Errorf("%w: invalid order freight", ErrValidation)
+			}
+			value := int64(parsed)
+			order = &value
+		}
+		if unit == nil && body.Freight != nil {
+			parsed, _, parseErr := pricingengine.MoneyFromLegacyFloat(body.Freight)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			value := int64(parsed)
+			unit = &value
+		}
+		observed := time.Now().UTC()
+		if body.FreightObservedAt != nil {
+			observed = body.FreightObservedAt.UTC()
+		}
+		evidence := FreightEvidenceInput{Status: freightStatus, FreightAmount: unit, OrderFreight: order,
+			Currency: body.FreightCurrency, Destination: body.FreightDestination, Quantity: body.FreightQuantity,
+			Source: body.FreightSource, ConfidenceBPS: body.FreightConfidenceBPS, ObservedAt: observed,
+			RawSnapshot: body.FreightRawSnapshot, CalculationMethod: body.FreightCalculationMethod}
+		if evidence.Source == "" {
+			evidence.Source = "manual_confirmed"
+		}
+		if evidence.ConfidenceBPS == 0 && freightStatus != FreightStatusUnknown {
+			evidence.ConfidenceBPS = 10000
+		}
+		normalized, normalizeErr := normalizeFreightEvidence(evidence)
+		if normalizeErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrValidation, normalizeErr)
+		}
+		freightEvidence = &normalized
+	}
 	row := SourceProduct{TenantID: tenantID, SourcePlatform: strings.ToLower(strings.TrimSpace(body.SourcePlatform)),
 		SourceProductID: strings.TrimSpace(body.SourceProductID), SourceURL: strings.TrimSpace(body.SourceURL),
 		SupplierID: strings.TrimSpace(body.SupplierID), SupplierName: strings.TrimSpace(body.SupplierName),
 		OriginalTitle: strings.TrimSpace(body.OriginalTitle), OriginalDescription: body.OriginalDescription,
 		OriginalImages: images, OriginalCategory: strings.TrimSpace(body.OriginalCategory), SourcePrice: body.SourcePrice,
-		Freight: body.Freight, MinOrderQuantity: body.MinOrderQuantity, SKUData: skus, RawData: raw,
+		Freight: body.Freight, FreightStatus: freightStatus, FreightCurrency: "CNY", FreightQuantity: 1,
+		MinOrderQuantity: body.MinOrderQuantity, SKUData: skus, RawData: raw,
 		CollectedAt: time.Now().UTC(), Status: SourceStatusCollected}
 	if row.SourcePlatform == "" || row.SourceProductID == "" || row.SourceURL == "" || row.OriginalTitle == "" {
 		return nil, fmt.Errorf("%w: required source product fields are missing", ErrValidation)
@@ -201,6 +261,11 @@ func (s *Service) CreateSource(ctx context.Context, tenantID int64, body CreateS
 			return nil, fmt.Errorf("%w: source product already exists", ErrConflict)
 		}
 		return nil, err
+	}
+	if freightEvidence != nil {
+		if persistErr := s.persistFreightEvidence(ctx, &row, *freightEvidence); persistErr != nil {
+			return nil, persistErr
+		}
 	}
 	return &row, nil
 }
@@ -279,11 +344,17 @@ func (s *Service) ListCandidates(ctx context.Context, tenantID int64, q ListQuer
 	var rows []Candidate
 	var total int64
 	db := s.DB.WithContext(ctx).Model(&Candidate{}).Where("candidates.tenant_id = ?", tenantID)
+	if strings.TrimSpace(q.Keyword) != "" || strings.TrimSpace(q.FreightStatus) != "" {
+		db = db.Joins("JOIN source_products sp ON sp.id = candidates.source_product_id")
+	}
 	if q.Status != "" {
 		db = db.Where("candidates.status = ?", q.Status)
 	}
 	if k := strings.TrimSpace(q.Keyword); k != "" {
-		db = db.Joins("JOIN source_products sp ON sp.id = candidates.source_product_id").Where("sp.original_title ILIKE ?", "%"+k+"%")
+		db = db.Where("sp.original_title ILIKE ?", "%"+k+"%")
+	}
+	if freightStatus := strings.TrimSpace(q.FreightStatus); freightStatus != "" {
+		db = db.Where("sp.freight_status = ?", freightStatus)
 	}
 	if err := db.Count(&total).Error; err != nil {
 		return PageResult[Candidate]{}, err
@@ -339,7 +410,15 @@ func (s *Service) CostCenter(ctx context.Context, tenantID int64) (*CostCenterSu
 				cover = p.Images[0].OriginURL
 			}
 		}
-		out.Products = append(out.Products, map[string]any{"id": p.ID, "title": p.Title, "coverUrl": cover, "purchaseCost": p.PurchaseCost, "freightCost": p.FreightCost, "packagingCost": p.PackagingCost, "otherCost": p.OtherCost, "suggestedSalePrice": p.SuggestedSalePrice, "estimatedProfit": p.EstimatedProfit, "estimatedMargin": p.EstimatedMargin, "catalogStatus": p.CatalogStatus})
+		out.Products = append(out.Products, map[string]any{"id": p.ID, "title": p.Title, "coverUrl": cover,
+			"purchaseCost": p.PurchaseCost, "freightCost": p.FreightCost, "freightStatus": p.FreightStatus,
+			"freightAmountCents": p.FreightAmount, "freightOrderAmountCents": p.FreightOrderAmount,
+			"freightCurrency": p.FreightCurrency, "freightDestination": p.FreightDestination,
+			"freightQuantity": p.FreightQuantity, "freightSource": p.FreightSource,
+			"freightConfidenceBps": p.FreightConfidenceBPS, "freightObservedAt": p.FreightObservedAt,
+			"freightCalculationMethod": p.FreightCalculationMethod,
+			"packagingCost":            p.PackagingCost, "otherCost": p.OtherCost, "suggestedSalePrice": p.SuggestedSalePrice,
+			"estimatedProfit": p.EstimatedProfit, "estimatedMargin": p.EstimatedMargin, "catalogStatus": p.CatalogStatus})
 	}
 	if analyzedCount > 0 {
 		out.AverageMarginBPS = marginSum / analyzedCount
@@ -533,7 +612,11 @@ func (s *Service) ApproveCandidate(ctx context.Context, tenantID int64, id uuid.
 		}
 		catalog = product.Product{TenantID: tenantID, SourceProductID: &src.ID, CandidateID: &candidate.ID, Source: src.SourcePlatform, SourceURL: src.SourceURL,
 			OriginalTitle: src.OriginalTitle, Title: src.OriginalTitle, Description: src.OriginalDescription, Currency: "CNY", Status: product.StatusDraft,
-			CatalogStatus: CatalogStatusDraft, Category: src.OriginalCategory, Supplier: src.SupplierName, PurchaseCost: src.SourcePrice, FreightCost: src.Freight, PackagingCost: packagingCost, OtherCost: otherCost,
+			CatalogStatus: CatalogStatusDraft, Category: src.OriginalCategory, Supplier: src.SupplierName, PurchaseCost: src.SourcePrice, FreightCost: src.Freight,
+			FreightStatus: src.FreightStatus, FreightAmount: src.FreightAmount, FreightOrderAmount: src.FreightOrderAmount,
+			FreightCurrency: src.FreightCurrency, FreightDestination: src.FreightDestination, FreightQuantity: src.FreightQuantity,
+			FreightSource: src.FreightSource, FreightConfidenceBPS: src.FreightConfidenceBPS, FreightObservedAt: src.FreightObservedAt,
+			FreightCalculationMethod: src.FreightCalculationMethod, PackagingCost: packagingCost, OtherCost: otherCost,
 			SuggestedSalePrice: candidate.EstimatedSalePrice, SalePrice: candidate.EstimatedSalePrice, EstimatedProfit: candidate.EstimatedProfit,
 			EstimatedMargin: candidate.EstimatedMargin, RawData: src.RawData}
 		if err := tx.Create(&catalog).Error; err != nil {
@@ -688,11 +771,11 @@ func (s *Service) CreateListingDraft(ctx context.Context, tenantID int64, catalo
 	if profileErr != nil {
 		return nil, false, fmt.Errorf("%w: %v", ErrValidation, profileErr)
 	}
-	purchase, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.PurchaseCost)
-	freight, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.FreightCost)
-	packaging, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.PackagingCost)
-	other, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.OtherCost)
-	pricing, pricingErr := pricingengine.Calculate(pricingengine.CostInput{Currency: "CNY", PurchaseCost: purchase, FreightCost: freight, PackagingCost: packaging, OtherCost: other, TargetProfit: 1000, TargetMarginBPS: 4000, MinimumProfit: 500, MinimumMarginBPS: 2000, Profile: profile})
+	pricingInput, pricingErr := s.catalogPricingInput(ctx, tenantID, catalog, platform, profile, nil)
+	if pricingErr != nil {
+		return nil, false, pricingErr
+	}
+	pricing, pricingErr := pricingengine.Calculate(pricingInput)
 	if pricingErr != nil {
 		return nil, false, pricingErr
 	}
@@ -797,27 +880,15 @@ func (s *Service) UpdateListingDraft(ctx context.Context, tenantID int64, id uui
 			if e = json.Unmarshal(row.PricingSnapshot, &previous); e != nil {
 				return fmt.Errorf("%w: invalid pricing snapshot", ErrValidation)
 			}
-			purchase, _, e := pricingengine.MoneyFromLegacyFloat(catalog.PurchaseCost)
-			if e != nil {
-				return e
-			}
-			freight, _, e := pricingengine.MoneyFromLegacyFloat(catalog.FreightCost)
-			if e != nil {
-				return e
-			}
-			packaging, _, e := pricingengine.MoneyFromLegacyFloat(catalog.PackagingCost)
-			if e != nil {
-				return e
-			}
-			other, _, e := pricingengine.MoneyFromLegacyFloat(catalog.OtherCost)
-			if e != nil {
-				return e
-			}
 			sale, _, e := pricingengine.MoneyFromLegacyFloat(body.SalePrice)
 			if e != nil {
 				return e
 			}
-			recalculated, e := pricingengine.Calculate(pricingengine.CostInput{Currency: "CNY", PurchaseCost: purchase, FreightCost: freight, PackagingCost: packaging, OtherCost: other, TargetProfit: 1000, TargetMarginBPS: 4000, MinimumProfit: 500, MinimumMarginBPS: 2000, SalePrice: &sale, Profile: previous.Profile})
+			pricingInput, e := s.catalogPricingInput(ctx, tenantID, catalog, row.Platform, previous.Profile, &sale)
+			if e != nil {
+				return e
+			}
+			recalculated, e := pricingengine.Calculate(pricingInput)
 			if e != nil {
 				return e
 			}
@@ -888,11 +959,11 @@ func (s *Service) RecalculateListingDraft(ctx context.Context, tenantID int64, i
 	if err != nil {
 		return nil, err
 	}
-	purchase, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.PurchaseCost)
-	freight, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.FreightCost)
-	packaging, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.PackagingCost)
-	other, _, _ := pricingengine.MoneyFromLegacyFloat(catalog.OtherCost)
-	result, err := pricingengine.Calculate(pricingengine.CostInput{Currency: "CNY", PurchaseCost: purchase, FreightCost: freight, PackagingCost: packaging, OtherCost: other, TargetProfit: 1000, TargetMarginBPS: 4000, MinimumProfit: 500, MinimumMarginBPS: 2000, Profile: profile})
+	pricingInput, err := s.catalogPricingInput(ctx, tenantID, catalog, row.Platform, profile, nil)
+	if err != nil {
+		return nil, err
+	}
+	result, err := pricingengine.Calculate(pricingInput)
 	if err != nil {
 		return nil, err
 	}

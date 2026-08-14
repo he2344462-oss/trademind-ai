@@ -8,20 +8,31 @@ import (
 )
 
 type CreateSourceProductBody struct {
-	SourcePlatform      string          `json:"sourcePlatform" binding:"required"`
-	SourceProductID     string          `json:"sourceProductId" binding:"required"`
-	SourceURL           string          `json:"sourceUrl" binding:"required"`
-	SupplierID          string          `json:"supplierId"`
-	SupplierName        string          `json:"supplierName"`
-	OriginalTitle       string          `json:"originalTitle" binding:"required"`
-	OriginalDescription string          `json:"originalDescription"`
-	OriginalImages      json.RawMessage `json:"originalImages"`
-	OriginalCategory    string          `json:"originalCategory"`
-	SourcePrice         *float64        `json:"sourcePrice"`
-	Freight             *float64        `json:"freight"`
-	MinOrderQuantity    int             `json:"minOrderQuantity"`
-	SKUData             json.RawMessage `json:"skuData"`
-	RawData             json.RawMessage `json:"rawData"`
+	SourcePlatform           string          `json:"sourcePlatform" binding:"required"`
+	SourceProductID          string          `json:"sourceProductId" binding:"required"`
+	SourceURL                string          `json:"sourceUrl" binding:"required"`
+	SupplierID               string          `json:"supplierId"`
+	SupplierName             string          `json:"supplierName"`
+	OriginalTitle            string          `json:"originalTitle" binding:"required"`
+	OriginalDescription      string          `json:"originalDescription"`
+	OriginalImages           json.RawMessage `json:"originalImages"`
+	OriginalCategory         string          `json:"originalCategory"`
+	SourcePrice              *float64        `json:"sourcePrice"`
+	Freight                  *float64        `json:"freight"`
+	FreightStatus            string          `json:"freightStatus"`
+	FreightAmount            string          `json:"freightAmount"`
+	FreightOrderAmount       string          `json:"freightOrderAmount"`
+	FreightCurrency          string          `json:"freightCurrency"`
+	FreightDestination       string          `json:"freightDestination"`
+	FreightQuantity          int             `json:"freightQuantity"`
+	FreightSource            string          `json:"freightSource"`
+	FreightConfidenceBPS     int64           `json:"freightConfidenceBps"`
+	FreightObservedAt        *time.Time      `json:"freightObservedAt"`
+	FreightRawSnapshot       json.RawMessage `json:"freightRawSnapshot"`
+	FreightCalculationMethod string          `json:"freightCalculationMethod"`
+	MinOrderQuantity         int             `json:"minOrderQuantity"`
+	SKUData                  json.RawMessage `json:"skuData"`
+	RawData                  json.RawMessage `json:"rawData"`
 }
 
 type TransitionCandidateBody struct {
@@ -182,14 +193,15 @@ type CreateListingOperationBatchBody struct {
 }
 
 type ListQuery struct {
-	Page      int
-	PageSize  int
-	Status    string
-	Platform  string
-	Keyword   string
-	CatalogID *uuid.UUID
-	SortBy    string
-	SortOrder string
+	Page          int
+	PageSize      int
+	Status        string
+	Platform      string
+	Keyword       string
+	CatalogID     *uuid.UUID
+	SortBy        string
+	SortOrder     string
+	FreightStatus string
 }
 
 type PageResult[T any] struct {

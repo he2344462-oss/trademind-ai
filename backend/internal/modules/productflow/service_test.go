@@ -17,7 +17,7 @@ func newTestService(t *testing.T) *Service {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&SourceProduct{}, &Candidate{}, &CandidateAnalysis{}, &ListingDraft{}, &PricingProfile{}, &PricingProfileRevision{}, &MarketSignalSnapshot{}, &MarketSignalProviderConfig{}, &CandidateAnalysisBatch{}, &CandidateAnalysisBatchItem{}, &ListingPerformanceSnapshot{}, &SelectionOutcomeEvaluation{}, &SelectionConfig{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
+	require.NoError(t, db.AutoMigrate(&SourceProduct{}, &SourceProductFreightSnapshot{}, &Candidate{}, &CandidateAnalysis{}, &ListingDraft{}, &PricingProfile{}, &PricingProfileRevision{}, &MarketSignalSnapshot{}, &MarketSignalProviderConfig{}, &CandidateAnalysisBatch{}, &CandidateAnalysisBatchItem{}, &ListingPerformanceSnapshot{}, &SelectionOutcomeEvaluation{}, &SelectionConfig{}, &product.Product{}, &product.ProductImage{}, &product.ProductSKU{}))
 	return &Service{DB: db}
 }
 
@@ -44,8 +44,119 @@ func TestCandidateAnalysisHistoryAndApprovalSnapshot(t *testing.T) {
 	require.NotNil(t, catalog.PackagingCost)
 	require.InDelta(t, 0.5, *catalog.PackagingCost, 0.001)
 	require.NotNil(t, catalog.EstimatedProfit)
-	_, err = svc.AnalyzeCandidate(ctx, 0, candidate.ID, body)
-	require.ErrorIs(t, err, ErrInvalidTransition)
+	refreshed, err := svc.AnalyzeCandidate(ctx, 0, candidate.ID, body)
+	require.NoError(t, err)
+	require.Equal(t, 3, refreshed.Analysis.AnalysisVersion)
+	var stillApproved Candidate
+	require.NoError(t, svc.DB.First(&stillApproved, "id = ?", candidate.ID).Error)
+	require.Equal(t, CandidateStatusApproved, stillApproved.Status)
+}
+
+func TestSourceRefreshInheritsPricingInputsAndUsesHighestSKUCost(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	body := testSourceBody("pricing-refresh-multisku")
+	initialPrice := 5.20
+	body.SourcePrice = &initialPrice
+	body.Freight = nil
+	body.SKUData = json.RawMessage(`[
+		{"skuCode":"COLOR-A","price":5.20,"stock":10},
+		{"skuCode":"COLOR-B","price":5.20,"stock":10}
+	]`)
+	source, err := svc.CreateSource(ctx, 0, body)
+	require.NoError(t, err)
+	candidate, _, err := svc.CreateCandidate(ctx, 0, source.ID)
+	require.NoError(t, err)
+
+	operatorInput := AnalyzeCandidateBody{
+		Platform: "xianyu", PackagingCost: "0.50", OtherCost: "0.50",
+		ExpectedReturnLoss: "1.50", TargetProfit: "10.00", MinimumProfit: "5.00",
+		TargetMarginBPS: 4000, MinimumMarginBPS: 2000,
+	}
+	first, err := svc.AnalyzeCandidate(ctx, 0, candidate.ID, operatorInput)
+	require.NoError(t, err)
+	require.Equal(t, "7.70", first.Cost.EstimatedTotalCost.String())
+	require.Equal(t, "17.70", first.Cost.SuggestedSalePrice.String())
+
+	approved, err := svc.ApproveCandidate(ctx, 0, candidate.ID)
+	require.NoError(t, err)
+	catalog := approved.Catalog.(product.Product)
+	require.InDelta(t, 17.70, *catalog.SalePrice, 0.001)
+
+	refreshedPrice := 5.50
+	refreshedSKUs := json.RawMessage(`[
+		{"skuCode":"A-24","price":5.50,"stock":20},
+		{"skuCode":"A-25","price":6.50,"stock":15}
+	]`)
+	require.NoError(t, svc.DB.Model(&SourceProduct{}).Where("id = ?", source.ID).Updates(map[string]any{"source_price": refreshedPrice, "sku_data": refreshedSKUs}).Error)
+	require.NoError(t, svc.DB.Where("product_id = ?", catalog.ID).Delete(&product.ProductSKU{}).Error)
+	low, high, sale := 5.50, 6.50, 17.70
+	require.NoError(t, svc.DB.Create(&[]product.ProductSKU{
+		{ProductID: catalog.ID, SKUCode: "A-24", CostPrice: &low, Price: &sale},
+		{ProductID: catalog.ID, SKUCode: "A-25", CostPrice: &high, Price: &sale},
+	}).Error)
+	require.NoError(t, svc.DB.Model(&product.Product{}).Where("id = ?", catalog.ID).Update("purchase_cost", refreshedPrice).Error)
+
+	second, err := svc.AnalyzeCandidate(ctx, 0, candidate.ID, AnalyzeCandidateBody{Platform: "xianyu", AnalysisMode: "rules_only"})
+	require.NoError(t, err)
+	require.Equal(t, first.Analysis.PricingProfileID, second.Analysis.PricingProfileID)
+	require.Equal(t, "9.00", second.Cost.EstimatedTotalCost.String())
+	require.Equal(t, "19.00", second.Cost.SuggestedSalePrice.String())
+	require.Equal(t, "10.00", second.Cost.EstimatedProfit.String())
+	require.NotNil(t, second.SKUProfit.MinimumSKUMarginBPS)
+	require.EqualValues(t, 5263, *second.SKUProfit.MinimumSKUMarginBPS)
+	require.Len(t, second.SKUProfit.Items, 2)
+
+	var snapshot struct {
+		Request AnalyzeCandidateBody `json:"request"`
+	}
+	require.NoError(t, json.Unmarshal(second.Analysis.InputSnapshot, &snapshot))
+	require.Equal(t, operatorInput.PackagingCost, snapshot.Request.PackagingCost)
+	require.Equal(t, operatorInput.OtherCost, snapshot.Request.OtherCost)
+	require.Equal(t, operatorInput.ExpectedReturnLoss, snapshot.Request.ExpectedReturnLoss)
+	require.Equal(t, operatorInput.TargetProfit, snapshot.Request.TargetProfit)
+	require.Equal(t, operatorInput.MinimumProfit, snapshot.Request.MinimumProfit)
+	require.Equal(t, operatorInput.TargetMarginBPS, snapshot.Request.TargetMarginBPS)
+	require.Equal(t, operatorInput.MinimumMarginBPS, snapshot.Request.MinimumMarginBPS)
+
+	unchanged, err := svc.GetCatalog(ctx, 0, catalog.ID)
+	require.NoError(t, err)
+	require.InDelta(t, 17.70, *unchanged.SalePrice, 0.001)
+	draft, _, err := svc.CreateListingDraft(ctx, 0, catalog.ID, CreateListingDraftBody{Platform: "xianyu"})
+	require.NoError(t, err)
+	require.InDelta(t, 19.00, *draft.SalePrice, 0.001)
+	require.InDelta(t, 10.00, *draft.EstimatedProfit, 0.001)
+
+	manualPrice := 17.70
+	updated, err := svc.UpdateListingDraft(ctx, 0, draft.ID, UpdateListingDraftBody{SalePrice: &manualPrice})
+	require.NoError(t, err)
+	require.InDelta(t, 8.70, *updated.EstimatedProfit, 0.001)
+
+	enabled := true
+	replacementProfile, err := svc.CreatePricingProfile(ctx, 0, PricingProfileInput{
+		Name: "replacement profile", Platform: "xianyu", Currency: "CNY",
+		PlatformFeeBPS: 300, Enabled: &enabled,
+	})
+	require.NoError(t, err)
+	third, err := svc.AnalyzeCandidate(ctx, 0, candidate.ID, AnalyzeCandidateBody{Platform: "xianyu", PricingProfileID: &replacementProfile.ID})
+	require.NoError(t, err)
+	require.Equal(t, &replacementProfile.ID, third.Analysis.PricingProfileID)
+}
+
+func TestUpsertCollectedSourceReturnsCanonicalPersistedID(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	priceA, priceB := 5.2, 5.5
+	first, err := svc.UpsertCollectedSource(ctx, CollectedSourceInput{TenantID: 0, SourcePlatform: "1688", SourceURL: "https://detail.1688.com/offer/997929387210.html", Title: "first", SKUs: []any{}, SourcePrice: &priceA})
+	require.NoError(t, err)
+	second, err := svc.UpsertCollectedSource(ctx, CollectedSourceInput{TenantID: 0, SourcePlatform: "1688", SourceURL: first.SourceURL, Title: "refreshed", SKUs: []any{}, SourcePrice: &priceB})
+	require.NoError(t, err)
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, "refreshed", second.OriginalTitle)
+	require.InDelta(t, priceB, *second.SourcePrice, 0.001)
+	var count int64
+	require.NoError(t, svc.DB.Model(&SourceProduct{}).Where("tenant_id = ? AND source_platform = ? AND source_product_id = ?", 0, "1688", first.SourceProductID).Count(&count).Error)
+	require.EqualValues(t, 1, count)
 }
 
 func TestAIExplanationFallsBackUnlessStructured(t *testing.T) {

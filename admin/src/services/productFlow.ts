@@ -7,6 +7,10 @@ export type SourceProduct = {
   id: string; sourcePlatform: string; sourceProductId: string; sourceUrl: string;
   supplierName?: string; originalTitle: string; originalDescription?: string;
   originalImages?: string[]; sourcePrice?: number; freight?: number; skuData?: unknown[];
+  freightStatus?: 'verified' | 'estimated' | 'free_shipping' | 'unknown'; freightAmountCents?: number;
+  freightOrderAmountCents?: number; freightCurrency?: string; freightDestination?: string;
+  freightQuantity?: number; freightSource?: string; freightConfidenceBps?: number;
+  freightObservedAt?: string; freightCalculationMethod?: string;
   collectedAt: string; status: string;
 };
 export type Candidate = {
@@ -15,7 +19,7 @@ export type Candidate = {
   estimatedMargin?: number; confidenceScore?: number; recommendation?: string; analyzedAt?: string;
   analysisVersion?: number; sourceProduct?: SourceProduct; rejectionReason?: string;
 };
-export type PricingResult = { currency: string; baseCost: string; totalFixedCost: string; estimatedPlatformFee: string; estimatedPaymentFee: string; estimatedAfterSaleLoss: string; estimatedTotalCost: string; breakEvenPrice: string; minimumSalePrice: string; suggestedSalePrice: string; estimatedProfit: string; estimatedMarginBps: number; markupRateBps: number; profile: { code: string; platform: string; configured: boolean } };
+export type PricingResult = { currency: string; baseCost: string; totalFixedCost: string; estimatedPlatformFee: string; estimatedPaymentFee: string; estimatedAfterSaleLoss: string; estimatedTotalCost: string; breakEvenPrice: string; minimumSalePrice: string; suggestedSalePrice: string; estimatedProfit: string; estimatedMarginBps: number; markupRateBps: number; freightStatus: string; freightCost: string; freightIncluded: boolean; profitBasis: 'complete' | 'excluding_freight'; warnings: string[]; profile: { code: string; platform: string; configured: boolean } };
 export type ScoreDimension = { score?: number; weight: number; reliable: boolean; evidence: string[] };
 export type ConfidenceBreakdown = { productDataBps: number; costDataBps: number; marketCoverageBps: number; marketSignalConfidenceBps?: number; overallAnalysisConfidenceBps?: number };
 export type AnalysisResult = { analysis: { id: string; analysisVersion: number; overallScore: number; confidenceScore: number; recommendation: string; createdAt: string; confidenceBreakdown?: ConfidenceBreakdown; marketSignalSnapshot?: MarketSignal[] }; cost: PricingResult; skuProfit: { minimumSkuMarginBps?: number; maximumSkuMarginBps?: number; averageSkuMarginBps?: number; warnings: string[] }; score: { dimensions: Record<string, ScoreDimension>; overallScore: number; confidenceScore: number; recommendation: string; reasons: string[]; warnings: string[]; blockers: string[]; missingDimensions: string[] }; explanation: { conclusion: string; reasons: string[]; risks: string[]; pricingExplanation: string; nextStep: string; source: string } };
@@ -23,6 +27,10 @@ export type CandidateAnalysis = AnalysisResult['analysis'] & { costSnapshot: Pri
 export type AnalyzeCandidateInput = { analysisMode?: 'rules_only' | 'ai_explanation'; platform?: 'xianyu' | 'taobao'; packagingCost?: string; otherCost?: string; expectedReturnLoss?: string; afterSaleReserve?: string; discountBuffer?: string; couponBuffer?: string; targetProfit?: string; targetMarginBps?: number; minimumProfit?: string; minimumMarginBps?: number; salePrice?: string; pricingProfile?: { code?: string; platformFeeBps?: number; platformFeeFixed?: string; paymentFeeBps?: number; paymentFeeFixed?: string; returnReserveBps?: number; otherBps?: number; otherFixed?: string } };
 export type CatalogProduct = {
   id: string; title: string; supplier?: string; purchaseCost?: number; freightCost?: number;
+  freightStatus?: 'verified' | 'estimated' | 'free_shipping' | 'unknown'; freightAmountCents?: number;
+  freightOrderAmountCents?: number; freightCurrency?: string; freightDestination?: string;
+  freightQuantity?: number; freightSource?: string; freightConfidenceBps?: number; freightObservedAt?: string;
+  freightCalculationMethod?: string; packagingCost?: number; otherCost?: number;
   suggestedSalePrice?: number; salePrice?: number; estimatedProfit?: number; estimatedMargin?: number;
   catalogStatus: string; images?: Array<{ publicUrl?: string; originUrl?: string }>;
   skus?: Array<{ id: string; skuCode: string; skuName: string }>;
@@ -45,6 +53,7 @@ const value = (input: unknown): string | number | undefined =>
 const listParams = (params: Record<string, unknown>): Record<string, string | number | undefined> => ({
   page: value(params.current), pageSize: value(params.pageSize), keyword: value(params.keyword), status: value(params.status),
   platform: value(params.platform), catalogProductId: value(params.catalogProductId), sortBy: value(params.sortBy), sortOrder: value(params.sortOrder),
+  freightStatus: value(params.freightStatus),
 });
 export const fetchSourceProducts = (params: Record<string, unknown>) => getWithParams<Paged<SourceProduct>>('/api/v1/source-products', listParams(params));
 export const createSourceProduct = (body: Record<string, unknown>) => postJSON<SourceProduct>('/api/v1/source-products', body);

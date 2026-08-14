@@ -32,6 +32,7 @@ export type BrowserExtractPayload = {
   paramPairs: Array<{ key: string; value: string }>;
   domSkuDimensions: DomSkuDimension[];
   domSkuTableRows: DomSkuTableRow[];
+  domFreightTexts: string[];
   /** 可能含 JSON 的 script 片段（已截断，供 Node 侧再解析） */
   scriptSnippets: string[];
   /** 详情页官方 SKU Selector 异步响应；仅由受安全策略保护的页面响应捕获。 */
@@ -40,7 +41,7 @@ export type BrowserExtractPayload = {
 
 export type Parse1688Result = Pick<
   NormalizedProduct,
-  'title' | 'mainImages' | 'descriptionImages' | 'attributes' | 'skus'
+  'title' | 'mainImages' | 'descriptionImages' | 'attributes' | 'skus' | 'freight'
 > & {
   raw: Record<string, unknown>;
   collectStatus?: 'success' | 'partial_success' | 'failed';

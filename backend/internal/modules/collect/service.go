@@ -89,16 +89,58 @@ func truncateRunes(s string, max int) string {
 }
 
 type normalizedProduct struct {
-	Source            string            `json:"source"`
-	SourceURL         string            `json:"sourceUrl"`
-	Title             string            `json:"title"`
-	Currency          string            `json:"currency"`
-	MainDescription   string            `json:"mainDescription"`
-	MainImages        []string          `json:"mainImages"`
-	DescriptionImages []string          `json:"descriptionImages"`
-	Attributes        json.RawMessage   `json:"attributes"`
-	SKUs              []json.RawMessage `json:"skus"`
-	Raw               json.RawMessage   `json:"raw"`
+	Source            string             `json:"source"`
+	SourceURL         string             `json:"sourceUrl"`
+	Title             string             `json:"title"`
+	Currency          string             `json:"currency"`
+	MainDescription   string             `json:"mainDescription"`
+	MainImages        []string           `json:"mainImages"`
+	DescriptionImages []string           `json:"descriptionImages"`
+	Attributes        json.RawMessage    `json:"attributes"`
+	SKUs              []json.RawMessage  `json:"skus"`
+	Raw               json.RawMessage    `json:"raw"`
+	Freight           *normalizedFreight `json:"freight"`
+}
+
+type normalizedFreight struct {
+	Status            string          `json:"status"`
+	OrderAmount       string          `json:"orderAmount"`
+	UnitAmount        string          `json:"unitAmount"`
+	Currency          string          `json:"currency"`
+	Destination       string          `json:"destination"`
+	Quantity          int             `json:"quantity"`
+	Source            string          `json:"source"`
+	ConfidenceBPS     int64           `json:"confidenceBps"`
+	ObservedAt        time.Time       `json:"observedAt"`
+	RawSnapshot       json.RawMessage `json:"rawSnapshot"`
+	CalculationMethod string          `json:"calculationMethod"`
+}
+
+func (n *normalizedFreight) productFlowInput() (*productflow.FreightEvidenceInput, error) {
+	if n == nil {
+		return nil, nil
+	}
+	var unit, order *int64
+	if strings.TrimSpace(n.UnitAmount) != "" {
+		parsed, err := productflow.ParseFreightMoney(n.UnitAmount)
+		if err != nil {
+			return nil, err
+		}
+		value := int64(parsed)
+		unit = &value
+	}
+	if strings.TrimSpace(n.OrderAmount) != "" {
+		parsed, err := productflow.ParseFreightMoney(n.OrderAmount)
+		if err != nil {
+			return nil, err
+		}
+		value := int64(parsed)
+		order = &value
+	}
+	return &productflow.FreightEvidenceInput{Status: n.Status, FreightAmount: unit, OrderFreight: order,
+		Currency: n.Currency, Destination: n.Destination, Quantity: n.Quantity, Source: n.Source,
+		ConfidenceBPS: n.ConfidenceBPS, ObservedAt: n.ObservedAt, RawSnapshot: n.RawSnapshot,
+		CalculationMethod: n.CalculationMethod}, nil
 }
 
 func parseNormalized(b json.RawMessage) (*normalizedProduct, error) {
@@ -121,6 +163,13 @@ func (n *normalizedProduct) importParams(fullJSON json.RawMessage) product.Impor
 		}
 		skus = append(skus, line)
 	}
+	freight := product.FreightImportParams{Status: productflow.FreightStatusUnknown, Currency: "CNY", Quantity: 1}
+	if parsed, err := n.Freight.productFlowInput(); err == nil && parsed != nil {
+		freight = product.FreightImportParams{Status: parsed.Status, AmountCents: parsed.FreightAmount,
+			OrderAmountCents: parsed.OrderFreight, Currency: parsed.Currency, Destination: parsed.Destination,
+			Quantity: parsed.Quantity, Source: parsed.Source, ConfidenceBPS: parsed.ConfidenceBPS,
+			ObservedAt: &parsed.ObservedAt, CalculationMethod: parsed.CalculationMethod}
+	}
 	return product.ImportDraftParams{
 		Source:             strings.TrimSpace(n.Source),
 		SourceURL:          strings.TrimSpace(n.SourceURL),
@@ -131,6 +180,7 @@ func (n *normalizedProduct) importParams(fullJSON json.RawMessage) product.Impor
 		DescriptionImages:  n.DescriptionImages,
 		SKUs:               skus,
 		FullNormalizedJSON: fullJSON,
+		Freight:            freight,
 	}
 }
 
@@ -338,6 +388,9 @@ func (s *Service) RunCollectJob(parent context.Context, taskID uuid.UUID, worker
 	}
 
 	var collectorOpts map[string]any
+	if strings.EqualFold(strings.TrimSpace(task.Source), "1688") {
+		collectorOpts = mergeJSONIntoCollectorOpts(collectorOpts, s.buildFreightRequestOptions(ctx, task.TenantID))
+	}
 	if isPinduoduoCollectSource(task.Source) {
 		useProfile := isPifaPinduoduoURL(task.SourceURL)
 		if len(task.RequestOptions) > 0 {
@@ -423,6 +476,11 @@ func (s *Service) RunCollectJob(parent context.Context, taskID uuid.UUID, worker
 		s.handleCollectJobError(ctx, task, fmt.Errorf("parse normalized product: %w", err), workerID, claim)
 		return
 	}
+	freightInput, err := norm.Freight.productFlowInput()
+	if err != nil {
+		s.handleCollectJobError(ctx, task, fmt.Errorf("parse freight evidence: %w", err), workerID, claim)
+		return
+	}
 	if strings.EqualFold(strings.TrimSpace(task.Source), "1688") && len(norm.MainImages) == 0 {
 		s.handleCollectJobError(ctx, task, &CollectorRejectedError{
 			Code:    "PARSE_FAILED",
@@ -449,7 +507,7 @@ func (s *Service) RunCollectJob(parent context.Context, taskID uuid.UUID, worker
 		source, sourceErr := s.ProductFlow.UpsertCollectedSource(ctx, productflow.CollectedSourceInput{
 			TenantID: task.TenantID, SourcePlatform: task.Source, SourceURL: params.SourceURL,
 			Title: params.Title, Description: params.Description, Images: images, SKUs: params.SKUs,
-			RawData: outcome.ProductJSON, SourcePrice: sourcePrice,
+			RawData: outcome.ProductJSON, SourcePrice: sourcePrice, Freight: freightInput,
 		})
 		if sourceErr != nil {
 			s.handleCollectJobError(ctx, task, fmt.Errorf("persist source product: %w", sourceErr), workerID, claim)
@@ -664,6 +722,8 @@ func (s *Service) CreateTaskAsync(c *gin.Context, body CreateTaskBody, adminID *
 		reqOpts = s.buildPinduoduoRequestOptions(c.Request.Context(), url, body.UseBrowserProfile)
 	} else if isTaobaoTmallCollectSource(source) {
 		reqOpts = s.buildTaobaoTmallRequestOptions(c.Request.Context(), url, true)
+	} else if strings.EqualFold(source, "1688") {
+		reqOpts = s.buildFreightRequestOptions(c.Request.Context(), 0)
 	}
 
 	maxRetries := s.defaultMaxRetriesForNewTask()
