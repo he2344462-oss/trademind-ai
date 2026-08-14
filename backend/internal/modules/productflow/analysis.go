@@ -211,7 +211,11 @@ func analyzeSKUs(source SourceProduct, in pricingengine.CostInput) (SKUSummary, 
 }
 
 func templateExplanation(score selectionengine.Result, cost pricingengine.PricingResult) Explanation {
-	return Explanation{Conclusion: map[string]string{selectionengine.RecommendationStrong: "强烈推荐测试", selectionengine.RecommendationRecommend: "推荐测试", selectionengine.RecommendationWatch: "建议观察", selectionengine.RecommendationReject: "不建议进入经营"}[score.Recommendation], Reasons: score.Reasons, Risks: append(score.Warnings, score.Blockers...), PricingExplanation: fmt.Sprintf("建议售价 ¥%s，预计利润 ¥%s，预计利润率 %.2f%%。", cost.SuggestedSalePrice.String(), cost.EstimatedProfit.String(), float64(cost.EstimatedMarginBPS)/100), NextStep: "先核验供应和类目资料，再由人工决定是否批准进入商品库。", Source: "rules_template"}
+	conclusion := map[string]string{selectionengine.RecommendationStrong: "强烈建议测试", selectionengine.RecommendationRecommend: "建议测试", selectionengine.RecommendationWatch: "建议观察", selectionengine.RecommendationReject: "不建议进入经营"}[score.Recommendation]
+	if score.Recommendation == selectionengine.RecommendationWatch && score.EvidenceCoverageBPS == 0 {
+		conclusion = "经营条件合格，待市场验证"
+	}
+	return Explanation{Conclusion: conclusion, Reasons: score.Reasons, Risks: append(score.Warnings, score.Blockers...), PricingExplanation: fmt.Sprintf("建议售价 ¥%s，预计利润 ¥%s，预计利润率 %.2f%%。", cost.SuggestedSalePrice.String(), cost.EstimatedProfit.String(), float64(cost.EstimatedMarginBPS)/100), NextStep: "先核验供应和类目资料，再由人工决定是否批准进入商品库。", Source: "rules_template"}
 }
 
 func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.UUID, body AnalyzeCandidateBody) (*AnalysisOutput, error) {
@@ -306,7 +310,7 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 			aiStatus = "fallback"
 		}
 	}
-	inputJSON, _ := json.Marshal(map[string]any{"sourceProduct": candidate.SourceProduct, "request": body, "scoreConfig": scoreCfg})
+	inputJSON, _ := json.Marshal(map[string]any{"sourceProduct": candidate.SourceProduct, "request": body, "scoreConfig": scoreCfg, "scoringAlgorithmVersion": selectionengine.ConfigVersion})
 	costJSON, _ := json.Marshal(cost)
 	skuJSON, _ := json.Marshal(sku)
 	scoreJSON, _ := json.Marshal(score.Dimensions)
@@ -324,7 +328,7 @@ func (s *Service) AnalyzeCandidate(ctx context.Context, tenantID int64, id uuid.
 			return e
 		}
 		version := locked.AnalysisVersion + 1
-		saved = CandidateAnalysis{TenantID: tenantID, CandidateID: id, AnalysisVersion: version, AnalysisMode: mode, Platform: platform, InputSnapshot: inputJSON, CostSnapshot: costJSON, SKUSnapshot: skuJSON, ScoreBreakdown: scoreJSON, OverallScore: score.OverallScore, ConfidenceScore: score.ConfidenceScore, Recommendation: score.Recommendation, Reasons: reasons, Warnings: warnings, Blockers: blockers, Explanation: explainJSON, AIStatus: aiStatus, PricingProfileID: profileID, MarketSignalSnapshot: marketJSON, ConfidenceBreakdown: confidenceJSON, ScoringConfigVersion: selectionConfig.Version, SelectionConfigID: &selectionConfig.ID, SelectionConfigVersion: selectionConfig.Version, PricingProfileVersion: profileVersion, RankingConfigVersion: rankingengine.ConfigVersion}
+		saved = CandidateAnalysis{TenantID: tenantID, CandidateID: id, AnalysisVersion: version, AnalysisMode: mode, Platform: platform, InputSnapshot: inputJSON, CostSnapshot: costJSON, SKUSnapshot: skuJSON, ScoreBreakdown: scoreJSON, OverallScore: score.OverallScore, ConfidenceScore: score.ConfidenceScore, Recommendation: score.Recommendation, Reasons: reasons, Warnings: warnings, Blockers: blockers, Explanation: explainJSON, AIStatus: aiStatus, PricingProfileID: profileID, MarketSignalSnapshot: marketJSON, ConfidenceBreakdown: confidenceJSON, ScoringConfigVersion: selectionengine.ConfigVersion, SelectionConfigID: &selectionConfig.ID, SelectionConfigVersion: selectionConfig.Version, PricingProfileVersion: profileVersion, RankingConfigVersion: rankingengine.ConfigVersion}
 		if e := tx.Create(&saved).Error; e != nil {
 			return e
 		}

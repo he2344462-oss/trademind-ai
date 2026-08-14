@@ -30,17 +30,18 @@ export default function RecommendationsPage() {
     { title: '建议售价', render: (_, row) => money(row.candidate.estimatedSalePrice), search: false },
     { title: '预计利润', render: (_, row) => money(row.candidate.estimatedProfit), search: false },
     { title: '利润率', render: (_, row) => percent(row.candidate.estimatedMargin), search: false },
-    { title: '商品评分', render: (_, row) => row.analysis.overallScore, search: false },
+    { title: '基础质量', render: (_, row) => row.analysis.confidenceBreakdown?.baseQualityScore ?? row.analysis.overallScore, search: false },
+    { title: '市场机会', render: (_, row) => row.analysis.confidenceBreakdown?.marketOpportunityScore ?? 'unknown', search: false },
     { title: '排名分', dataIndex: 'rankingScore', search: false },
     { title: '分析可信度', render: (_, row) => `${row.analysis.confidenceScore}%`, search: false },
     { title: '市场覆盖', render: (_, row) => { const info = marketInfo(row); return <Space size={[0, 4]} wrap><Tag color={info.coverage >= 5000 ? 'green' : info.coverage > 0 ? 'gold' : 'default'}>{info.coverage >= 5000 ? '高' : info.coverage > 0 ? '中' : '低'}</Tag>{info.origins.map((origin) => <Tag key={origin} color={origin === 'fixture' ? 'red' : undefined}>{sourceLabels[origin] || origin}</Tag>)}</Space>; }, search: false },
-    { title: '结论', render: (_, row) => <Tag>{labels[row.analysis.recommendation] || row.analysis.recommendation}</Tag>, search: false },
+    { title: '结论', render: (_, row) => <Tag>{row.analysis.recommendation === 'watch' && marketInfo(row).coverage === 0 ? '经营条件合格，待市场验证' : labels[row.analysis.recommendation] || row.analysis.recommendation}</Tag>, search: false },
   ];
-  return <TmPageContainer title="AI 推荐榜" subTitle="排名来自规则评分、利润、可信度和风险，不包含 LLM 自由判断" extra={[
+  return <TmPageContainer title="AI 推荐榜" subTitle="排名区分基础质量与市场证据；无市场证据的商品只作为经营条件初筛" extra={[
     <Select key="market" value={marketFilter} onChange={setMarketFilter} options={[{ label: '全部市场数据', value: 'all' }, { label: '仅有市场信号', value: 'with_signal' }, { label: '仅官方/授权', value: 'verified' }, { label: '排除测试数据', value: 'exclude_fixture' }]} />,
     <Select key="limit" value={limit} onChange={setLimit} options={[10, 20, 50].map((value) => ({ label: `TOP ${value}`, value }))} />,
   ]}>
-    <Alert style={{ marginBottom: 16 }} type="info" showIcon message="市场数据边界" description="需求或竞争信号缺失时会显示暂无可靠数据；分析可信度不代表爆款概率或赚钱概率。测试数据不会参与正式评分。" />
+    <Alert style={{ marginBottom: 16 }} type="info" showIcon message="市场数据边界" description="需求与竞争都缺少可靠证据时，市场机会保持 unknown，最终建议最高为观察/小规模测试；分析可信度不代表爆款概率或赚钱概率。测试数据不会参与正式评分。" />
     <ProTable<RecommendationRow> rowKey="id" columns={columns} rowSelection={{ selectedRowKeys: selected, onChange: (keys) => setSelected(keys.map(String)) }} tableAlertOptionRender={() => <Space><Button type="primary" onClick={async () => { const result = await bulkCandidateAction('approve', selected, 'batch_recommendation'); message.success(`已批准 ${result.completed.length} 项，失败 ${Object.keys(result.failed).length} 项`); setSelected([]); }}>批准进入商品库</Button></Space>} search={{ labelWidth: 'auto' }} params={{ batchId, limit, marketFilter }} request={async (params) => { const id = String(params.batchId || batchId).trim(); if (!id) return { data: [], total: 0, success: true }; const result = await fetchTopRecommendations(id, limit); const list = result.list.filter((row) => { const info = marketInfo(row); if (marketFilter === 'with_signal') return info.participating.length > 0; if (marketFilter === 'verified') return info.participating.some((signal) => ['official', 'authorized'].includes(signal.origin)); if (marketFilter === 'exclude_fixture') return !info.origins.includes('fixture'); return true; }); return { data: list, total: list.length, success: true }; }} form={{ onValuesChange: (values) => setBatchId(String(values.batchId || '')) }} columnsState={{ value: {} }} />
   </TmPageContainer>;
 }

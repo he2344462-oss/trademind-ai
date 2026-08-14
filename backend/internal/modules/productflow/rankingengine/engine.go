@@ -2,7 +2,7 @@ package rankingengine
 
 import "github.com/trademind-ai/trademind/backend/internal/modules/productflow/pricingengine"
 
-const ConfigVersion = "ranking-v1"
+const ConfigVersion = "ranking-v2"
 
 type Config struct {
 	OverallWeight    int64               `json:"overallWeight"`
@@ -19,12 +19,15 @@ func DefaultConfig() Config {
 }
 
 type Input struct {
-	OverallScore int64
-	Confidence   int64
-	Profit       pricingengine.Money
-	MarginBPS    int64
-	RiskScore    int64
-	Blocked      bool
+	OverallScore           int64
+	BaseQualityScore       int64
+	MarketOpportunityScore *int64
+	EvidenceCoverageBPS    int64
+	Confidence             int64
+	Profit                 pricingengine.Money
+	MarginBPS              int64
+	RiskScore              int64
+	Blocked                bool
 }
 
 type Result struct {
@@ -59,6 +62,23 @@ func Score(in Input, cfg Config) Result {
 	if weight <= 0 {
 		return Result{}
 	}
-	score := (clamp(in.OverallScore, 100)*cfg.OverallWeight + clamp(in.Confidence, 100)*cfg.ConfidenceWeight + profitScore*cfg.ProfitWeight + marginScore*cfg.MarginWeight + clamp(in.RiskScore, 100)*cfg.RiskWeight) / weight
-	return Result{Score: score, Reasons: []string{"排序基于规则总分、分析可信度、预计利润、利润率与基础风险", "排序分不包含 LLM 自由判断"}}
+	baseQuality := in.BaseQualityScore
+	if baseQuality == 0 {
+		baseQuality = in.OverallScore
+	}
+	baseRank := (clamp(baseQuality, 100)*cfg.OverallWeight + clamp(in.Confidence, 100)*cfg.ConfidenceWeight + profitScore*cfg.ProfitWeight + marginScore*cfg.MarginWeight + clamp(in.RiskScore, 100)*cfg.RiskWeight) / weight
+	reasons := []string{"排序先使用基础质量、分析可信度、预计利润、利润率与基础风险进行初筛", "排序分不包含 LLM 自由判断"}
+	score := baseRank * 80 / 100
+	if in.MarketOpportunityScore != nil {
+		coverage := clamp(in.EvidenceCoverageBPS, 10000)
+		marketShare := int64(10)
+		if coverage >= 10000 {
+			marketShare = 20
+		}
+		score = baseRank*(100-marketShare)/100 + clamp(*in.MarketOpportunityScore, 100)*marketShare/100
+		reasons = append(reasons, "市场机会仅在存在可靠证据时参与排序，并保留证据覆盖差异")
+	} else {
+		reasons = append(reasons, "暂无可靠市场证据，当前排名仅代表基础经营条件初筛")
+	}
+	return Result{Score: clamp(score, 100), Reasons: reasons}
 }

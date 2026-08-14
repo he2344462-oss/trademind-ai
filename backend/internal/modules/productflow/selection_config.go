@@ -25,12 +25,13 @@ const (
 )
 
 type SelectionThresholds struct {
-	StrongRecommend  int64 `json:"strongRecommend"`
-	Recommend        int64 `json:"recommend"`
-	Watch            int64 `json:"watch"`
-	MinimumMarginBPS int64 `json:"minimumMarginBps"`
-	MinimumProfit    int64 `json:"minimumProfit"`
-	StaleAfterDays   int   `json:"staleAfterDays"`
+	StrongRecommend         int64 `json:"strongRecommend"`
+	Recommend               int64 `json:"recommend"`
+	Watch                   int64 `json:"watch"`
+	MinimumMarginBPS        int64 `json:"minimumMarginBps"`
+	MinimumProfit           int64 `json:"minimumProfit"`
+	StaleAfterDays          int   `json:"staleAfterDays"`
+	StrongMarketCoverageBPS int64 `json:"strongMarketCoverageBps,omitempty"`
 }
 
 type SelectionBlockers struct {
@@ -49,7 +50,7 @@ func defaultSelectionConfig() selectionengine.Config { return selectionengine.De
 
 func selectionRow(version, status string, tenantID int64, cfg selectionengine.Config, createdBy *uuid.UUID) SelectionConfig {
 	weights, _ := json.Marshal(cfg.Weights)
-	thresholds, _ := json.Marshal(SelectionThresholds{StrongRecommend: cfg.StrongRecommendThreshold, Recommend: cfg.RecommendThreshold, Watch: cfg.WatchThreshold, MinimumMarginBPS: cfg.MinimumMarginBPS, MinimumProfit: int64(cfg.MinimumProfit), StaleAfterDays: cfg.StaleAfterDays})
+	thresholds, _ := json.Marshal(SelectionThresholds{StrongRecommend: cfg.StrongRecommendThreshold, Recommend: cfg.RecommendThreshold, Watch: cfg.WatchThreshold, MinimumMarginBPS: cfg.MinimumMarginBPS, MinimumProfit: int64(cfg.MinimumProfit), StaleAfterDays: cfg.StaleAfterDays, StrongMarketCoverageBPS: cfg.StrongMarketCoverageBPS})
 	blockers, _ := json.Marshal(SelectionBlockers{SensitiveKeywords: cfg.SensitiveKeywords, BlockerKeywords: cfg.BlockerKeywords})
 	return SelectionConfig{TenantID: tenantID, Version: version, Weights: datatypes.JSON(weights), Thresholds: datatypes.JSON(thresholds), Blockers: datatypes.JSON(blockers), Status: status, CreatedBy: createdBy}
 }
@@ -64,7 +65,7 @@ func validateSelectionConfig(cfg selectionengine.Config) error {
 		}
 		total += weight
 	}
-	if total != 100 || cfg.StrongRecommendThreshold < cfg.RecommendThreshold || cfg.RecommendThreshold < cfg.WatchThreshold || cfg.StrongRecommendThreshold > 100 || cfg.WatchThreshold < 0 || cfg.MinimumMarginBPS < 0 || cfg.MinimumProfit < 0 || cfg.StaleAfterDays < 1 {
+	if total != 100 || cfg.StrongRecommendThreshold < cfg.RecommendThreshold || cfg.RecommendThreshold < cfg.WatchThreshold || cfg.StrongRecommendThreshold > 100 || cfg.WatchThreshold < 0 || cfg.MinimumMarginBPS < 0 || cfg.MinimumProfit < 0 || cfg.StaleAfterDays < 1 || cfg.StrongMarketCoverageBPS < 0 || cfg.StrongMarketCoverageBPS > 10000 {
 		return fmt.Errorf("%w: invalid selection thresholds", ErrValidation)
 	}
 	return nil
@@ -83,12 +84,18 @@ func configFromRow(row SelectionConfig) (selectionengine.Config, error) {
 	if err := json.Unmarshal(row.Blockers, &blockers); err != nil {
 		return selectionengine.Config{}, err
 	}
-	cfg := selectionengine.Config{Weights: weights, StrongRecommendThreshold: thresholds.StrongRecommend, RecommendThreshold: thresholds.Recommend, WatchThreshold: thresholds.Watch, MinimumMarginBPS: thresholds.MinimumMarginBPS, MinimumProfit: pricingengine.Money(thresholds.MinimumProfit), StaleAfterDays: thresholds.StaleAfterDays, SensitiveKeywords: blockers.SensitiveKeywords, BlockerKeywords: blockers.BlockerKeywords}
+	cfg := selectionengine.Config{Weights: weights, StrongRecommendThreshold: thresholds.StrongRecommend, RecommendThreshold: thresholds.Recommend, WatchThreshold: thresholds.Watch, MinimumMarginBPS: thresholds.MinimumMarginBPS, MinimumProfit: pricingengine.Money(thresholds.MinimumProfit), StaleAfterDays: thresholds.StaleAfterDays, SensitiveKeywords: blockers.SensitiveKeywords, BlockerKeywords: blockers.BlockerKeywords, StrongMarketCoverageBPS: thresholds.StrongMarketCoverageBPS}
+	if cfg.StrongMarketCoverageBPS == 0 {
+		cfg.StrongMarketCoverageBPS = selectionengine.DefaultConfig().StrongMarketCoverageBPS
+	}
 	return cfg, validateSelectionConfig(cfg)
 }
 
 func configFromInput(input SelectionConfigInput) (selectionengine.Config, error) {
-	cfg := selectionengine.Config{Weights: input.Weights, StrongRecommendThreshold: input.Thresholds.StrongRecommend, RecommendThreshold: input.Thresholds.Recommend, WatchThreshold: input.Thresholds.Watch, MinimumMarginBPS: input.Thresholds.MinimumMarginBPS, MinimumProfit: pricingengine.Money(input.Thresholds.MinimumProfit), StaleAfterDays: input.Thresholds.StaleAfterDays, SensitiveKeywords: input.Blockers.SensitiveKeywords, BlockerKeywords: input.Blockers.BlockerKeywords}
+	cfg := selectionengine.Config{Weights: input.Weights, StrongRecommendThreshold: input.Thresholds.StrongRecommend, RecommendThreshold: input.Thresholds.Recommend, WatchThreshold: input.Thresholds.Watch, MinimumMarginBPS: input.Thresholds.MinimumMarginBPS, MinimumProfit: pricingengine.Money(input.Thresholds.MinimumProfit), StaleAfterDays: input.Thresholds.StaleAfterDays, SensitiveKeywords: input.Blockers.SensitiveKeywords, BlockerKeywords: input.Blockers.BlockerKeywords, StrongMarketCoverageBPS: input.Thresholds.StrongMarketCoverageBPS}
+	if cfg.StrongMarketCoverageBPS == 0 {
+		cfg.StrongMarketCoverageBPS = selectionengine.DefaultConfig().StrongMarketCoverageBPS
+	}
 	return cfg, validateSelectionConfig(cfg)
 }
 

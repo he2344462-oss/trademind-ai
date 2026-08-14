@@ -240,7 +240,7 @@ func (s *Service) processBatchItem(ctx context.Context, batch *CandidateAnalysis
 	if d, ok := out.Score.Dimensions["risk"]; ok && d.Score != nil {
 		risk = *d.Score
 	}
-	ranked := rankingengine.Score(rankingengine.Input{OverallScore: out.Score.OverallScore, Confidence: out.Score.ConfidenceScore, Profit: out.Cost.EstimatedProfit, MarginBPS: out.Cost.EstimatedMarginBPS, RiskScore: risk, Blocked: len(out.Score.Blockers) > 0}, rankingengine.DefaultConfig())
+	ranked := rankingengine.Score(rankingengine.Input{OverallScore: out.Score.OverallScore, BaseQualityScore: out.Score.BaseQualityScore, MarketOpportunityScore: out.Score.MarketOpportunityScore, EvidenceCoverageBPS: out.Score.EvidenceCoverageBPS, Confidence: out.Score.ConfidenceScore, Profit: out.Cost.EstimatedProfit, MarginBPS: out.Cost.EstimatedMarginBPS, RiskScore: risk, Blocked: len(out.Score.Blockers) > 0}, rankingengine.DefaultConfig())
 	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if e := tx.Model(item).Updates(map[string]any{"status": BatchItemStatusCompleted, "analysis_id": out.Analysis.ID, "ranking_score": ranked.Score, "completed_at": now}).Error; e != nil {
 			return e

@@ -210,6 +210,7 @@ function expectThemeFramesConsistent(
 }
 
 const smokeRoutes = [
+  { path: "/candidates", name: /AI 候选池/ },
   { path: "/selection-dashboard", name: /AI 选品工作台/ },
   { path: "/analysis-batches", name: /分析任务/ },
   { path: "/data-imports", name: /真实数据导入/ },
